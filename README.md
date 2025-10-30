@@ -6,6 +6,35 @@ Coding agents are magical, but they are general-purpose tools that need to be cu
 
 ![Console](Console.png)
 
+## Installation
+
+```bash
+npx nori-ai@latest install
+```
+
+Launch Claude Code from your terminal. Nori features activate automatically.
+
+### Select Your Profile
+
+During installation, choose the profile that matches your role:
+
+- **senior-swe**: High-confirmation co-pilot mode
+- **product-manager**: Autonomous execution with technical guidance
+- **documenter**: Documentation-focused workflows
+
+Switch profiles anytime:
+
+```bash
+npx nori-ai@latest switch-profile <profile-name>
+```
+
+Or use `/switch-nori-profile` during a conversation.
+
+## Requirements
+
+- Node.js 22 or higher
+- Claude Code CLI installed
+
 ## The Problem
 
 Generic coding agents work great initially but degrade with scale:
@@ -23,45 +52,46 @@ Nori provides three core capabilities that transform coding agents from generic 
 
 ### 1. Documentation: Living Docs That Evolve With Your Code
 
-**The problem**: Agents need AI-scale docs, and docs have always been an afterthought. Without it, context evaporates between sessions. At best, teams waste time re-explaining decisions. At worst, intention is lost and bad decisions are made.
+Automatically create and maintain `docs.md` files throughout your codebase.
+Nori configures AI agents to read and write documentation. Every change must
+come with a docs.md file update, and there must be a docs.md file in every
+folder in your codebase.
 
-**Nori's solution**:
+If you are using the Nori server (paid), Nori will additionally capture
+conversations from your entire team, and can be configured to ingest from
+across your team's knowledge sources (git/jira/linear/drive/etc). Nori-powered
+agents are required to query that database before making any changes.
 
-- **Docs automation**: Automatically create and maintain `docs.md` files throughout your codebase. Generate local documentation with `initial-documenter` and maintain docs with `change-documenter` subagents that automatically write updates as you build.
-- **Zero manual effort**: Documentation stays synchronized with code automatically
-- **Nori server (paid)**: Server-side knowledge base with conversation capture, memorize/recall tools, and multi-strategy search (keyword + fuzzy + vector)
-
-**Result**: Your team's institutional memory becomes your coding agent's memory. No more repeated explanations.
+Your team's institutional memory becomes your coding agent's memory. No more repeated explanations.
 
 ### 2. Tests: Process Enforcement That Prevents Shortcuts
 
-**The problem**: Coding agents are behaviorally expeditious. They skip verification steps. Unless directed otherwise, they write tests after implementation, take debugging shortcuts, and claim success without proof.
+Coding agents act like junior engineers. They skip verification steps, take debugging shortcuts, and claim success without real proof.
 
-**Nori's solution**:
+Nori enforces Test Driven Development. All agents have to run red-green-refactor
+cycles for any changes. Before writing any code, agents have to write tests.
+This guarantees that your behavioral intent is captured while the coding agent
+is most 'lucid' (i.e. at the beginning of the context window).
 
-- **TDD skill**: Enforces red-green-refactor cycle. Write failing test → verify it fails → minimal code → verify it passes → refactor
-- **Testing anti-patterns skill**: Catches common mistakes like testing mocks instead of behavior
-- **Systematic debugging**: Four-phase framework (root cause investigation → pattern analysis → hypothesis testing → implementation)
-- **Root-cause tracing**: Backward tracing through call stacks to find original triggers, not symptoms
-- **Mandatory verification**: Claude must verify tests fail correctly and pass correctly—no skipping steps
+Nori comes with additional strategies for systematic debugging and root cause
+tracing to make debugging a breeze.
 
-**Result**: Code quality stays high at scale. No shortcuts, no unverified claims, no technical debt from "tests later."
+Code quality stays high at scale. No shortcuts, no unverified claims, no technical debt from "tests later."
 
 ### 3. Profiles: Role-Based Customization Out of the Box
 
-**The problem**: Coding agents are being used by more and more contributors, not just your best engineers. This creates obvious risk as different team members have varying skills and knowledge of best practices. Senior engineers want efficiency, product managers need guidance. Every team will be forced to build these guardrails from scratch.
+Coding agents are being used by more and more contributors, not just senior engineers. This creates obvious risk as different team members have varying skills and knowledge of best practices. Senior engineers want efficiency, product managers need guidance.
 
-**Nori's solution**:
-
-- **Pre-built profiles** with proven patterns for common roles:
+Nori comes with pre-built profiles, and a dead-simple profile switcher. Run with
+one of the existing profile sets:
   - `senior-swe`: High-confirmation co-pilot mode, extensive planning leaning on the knowledge of the engineer
   - `product-manager`: Full autonomy with frequent commits, technical guidance without hand-holding
   - `documenter`: Specialized behavior focused on documentation
-- **Mixin architecture**: Profiles compose from modular mixins (`_base`, `_docs`, `_swe`) for easy customization
-- **One command to switch**: `npx nori-ai switch-profile <name>` or use `/switch-nori-profile` in conversation
-- **Extensible**: Create custom profiles by combining mixins or modifying built-in profiles
+  - `amol`: My personal profile. Fine tuned to run a half dozen agents in parallel.
 
-**Result**: Teams get role-appropriate behavior immediately. No configuration burden, no rebuilding common patterns.
+Or roll your own. Just copy one of the existing profile structures, write a CLAUDE.md, and pull in whatever mixins you want.
+
+Teams on Nori get role-appropriate behavior immediately. No configuration burden, no rebuilding common patterns.
 
 ## Features
 
@@ -89,44 +119,6 @@ _Team documentation server that captures, organizes, and surfaces institutional 
 - **Memorize/Recall/UpdateMemory tools**: Claude can save and query team documentation during conversations, eliminating repeated explanations
 - **Usage analytics**: Track token usage, costs, and AI impact with daily LLM-generated reports
 
-## Installation
-
-```bash
-npx nori-ai@latest install
-```
-
-Launch Claude Code from your terminal. Nori features activate automatically.
-
-### Select Your Profile
-
-During installation, choose the profile that matches your role:
-
-- **senior-swe**: High-confirmation co-pilot mode
-- **product-manager**: Autonomous execution with technical guidance
-- **documenter**: Documentation-focused workflows
-
-Switch profiles anytime:
-
-```bash
-npx nori-ai@latest switch-profile <profile-name>
-```
-
-Or use `/switch-nori-profile` during a conversation.
-
-## Uninstallation
-
-Remove all Nori features:
-
-```bash
-npx nori-ai uninstall
-```
-
-Completely remove the package:
-
-```bash
-npm uninstall -g nori-ai
-```
-
 ## Commands
 
 ```bash
@@ -136,11 +128,6 @@ npx nori-ai uninstall    # Uninstall all features
 npx nori-ai help         # Show help message
 npx nori-ai check        # Run configuration validation
 ```
-
-## Requirements
-
-- Node.js 22 or higher
-- Claude Code CLI installed
 
 ## Special Thanks
 
