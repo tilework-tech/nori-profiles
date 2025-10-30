@@ -1,0 +1,244 @@
+/**
+ * Slash commands feature loader
+ * Registers all Nori slash commands with Claude Code
+ */
+
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+import type { Config } from '@/installer/config.js';
+import type {
+  Loader,
+  ValidationResult,
+} from '@/installer/features/loaderRegistry.js';
+
+import { CLAUDE_DIR, CLAUDE_COMMANDS_DIR } from '@/installer/env.js';
+import { success, info, warn } from '@/installer/logger.js';
+
+// Get directory of this loader file
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+/**
+ * Get config directory for slash commands based on selected profile
+ *
+ * @param args - Configuration arguments
+ * @param args.profileName - Name of the profile to load slash commands from
+ *
+ * @returns Path to the slashcommands config directory for the profile
+ */
+const getConfigDir = (args: { profileName: string }): string => {
+  const { profileName } = args;
+  return path.join(CLAUDE_DIR, 'profiles', profileName, 'slashcommands');
+};
+
+/**
+ * Register all slash commands
+ * @param args - Configuration arguments
+ * @param args.config - Runtime configuration
+ */
+const registerSlashCommands = async (args: {
+  config: Config;
+}): Promise<void> => {
+  const { config } = args;
+  info({ message: 'Registering Nori slash commands...' });
+
+  // Get profile name from config (default to senior-swe)
+  const profileName = config.profile?.baseProfile || 'senior-swe';
+  const configDir = getConfigDir({ profileName });
+
+  // Create commands directory if it doesn't exist
+  await fs.mkdir(CLAUDE_COMMANDS_DIR, { recursive: true });
+
+  let registeredCount = 0;
+  let skippedCount = 0;
+
+  // Read all .md files from the profile's slashcommands directory
+  const files = await fs.readdir(configDir);
+  const mdFiles = files.filter(
+    (file) => file.endsWith('.md') && file !== 'docs.md',
+  );
+
+  for (const file of mdFiles) {
+    const commandSrc = path.join(configDir, file);
+    const commandDest = path.join(CLAUDE_COMMANDS_DIR, file);
+
+    try {
+      await fs.access(commandSrc);
+      await fs.copyFile(commandSrc, commandDest);
+      const commandName = file.replace(/\.md$/, '');
+      success({ message: `✓ /${commandName} slash command registered` });
+      registeredCount++;
+    } catch {
+      warn({
+        message: `Slash command definition not found at ${commandSrc}, skipping`,
+      });
+      skippedCount++;
+    }
+  }
+
+  if (registeredCount > 0) {
+    success({
+      message: `Successfully registered ${registeredCount} slash command${
+        registeredCount === 1 ? '' : 's'
+      }`,
+    });
+  }
+  if (skippedCount > 0) {
+    warn({
+      message: `Skipped ${skippedCount} slash command${
+        skippedCount === 1 ? '' : 's'
+      } (not found)`,
+    });
+  }
+};
+
+/**
+ * Unregister all slash commands
+ * @param args - Configuration arguments
+ * @param args.config - Runtime configuration
+ */
+const unregisterSlashCommands = async (args: {
+  config: Config;
+}): Promise<void> => {
+  const { config } = args;
+  info({ message: 'Removing Nori slash commands...' });
+
+  let removedCount = 0;
+
+  // Get profile name from config (default to senior-swe)
+  const profileName = config.profile?.baseProfile || 'senior-swe';
+  const configDir = getConfigDir({ profileName });
+
+  // Read all .md files from the profile's slashcommands directory
+  try {
+    const files = await fs.readdir(configDir);
+    const mdFiles = files.filter(
+      (file) => file.endsWith('.md') && file !== 'docs.md',
+    );
+
+    for (const file of mdFiles) {
+      const commandPath = path.join(CLAUDE_COMMANDS_DIR, file);
+
+      try {
+        await fs.access(commandPath);
+        await fs.unlink(commandPath);
+        const commandName = file.replace(/\.md$/, '');
+        success({ message: `✓ /${commandName} slash command removed` });
+        removedCount++;
+      } catch {
+        const commandName = file.replace(/\.md$/, '');
+        info({
+          message: `/${commandName} slash command not found (may not be installed)`,
+        });
+      }
+    }
+  } catch {
+    info({ message: 'Profile slashcommands directory not found' });
+  }
+
+  if (removedCount > 0) {
+    success({
+      message: `Successfully removed ${removedCount} slash command${
+        removedCount === 1 ? '' : 's'
+      }`,
+    });
+  }
+};
+
+/**
+ * Validate slash commands installation
+ * @param args - Configuration arguments
+ * @param args.config - Runtime configuration
+ *
+ * @returns Validation result
+ */
+const validate = async (args: {
+  config: Config;
+}): Promise<ValidationResult> => {
+  const { config } = args;
+  const errors: Array<string> = [];
+
+  // Check if commands directory exists
+  try {
+    await fs.access(CLAUDE_COMMANDS_DIR);
+  } catch {
+    errors.push(`Commands directory not found at ${CLAUDE_COMMANDS_DIR}`);
+    errors.push('Run "nori-ai install" to create the commands directory');
+    return {
+      valid: false,
+      message: 'Commands directory not found',
+      errors,
+    };
+  }
+
+  // Get profile name from config (default to senior-swe)
+  const profileName = config.profile?.baseProfile || 'senior-swe';
+  const configDir = getConfigDir({ profileName });
+
+  // Check if all expected slash commands are present
+  const missingCommands: Array<string> = [];
+  let expectedCount = 0;
+
+  try {
+    const files = await fs.readdir(configDir);
+    const mdFiles = files.filter(
+      (file) => file.endsWith('.md') && file !== 'docs.md',
+    );
+    expectedCount = mdFiles.length;
+
+    for (const file of mdFiles) {
+      const commandPath = path.join(CLAUDE_COMMANDS_DIR, file);
+      try {
+        await fs.access(commandPath);
+      } catch {
+        missingCommands.push(file.replace(/\.md$/, ''));
+      }
+    }
+  } catch {
+    errors.push(`Profile slashcommands directory not found at ${configDir}`);
+    return {
+      valid: false,
+      message: 'Profile slashcommands directory not found',
+      errors,
+    };
+  }
+
+  if (missingCommands.length > 0) {
+    errors.push(
+      `Missing ${
+        missingCommands.length
+      } slash command(s): ${missingCommands.join(', ')}`,
+    );
+    errors.push('Run "nori-ai install" to register missing commands');
+    return {
+      valid: false,
+      message: 'Some slash commands are not installed',
+      errors,
+    };
+  }
+
+  return {
+    valid: true,
+    message: `All ${expectedCount} slash commands are properly installed`,
+    errors: null,
+  };
+};
+
+/**
+ * Slash commands feature loader
+ */
+export const slashCommandsLoader: Loader = {
+  name: 'slashcommands',
+  description: 'Register all Nori slash commands with Claude Code',
+  run: async (args: { config: Config }) => {
+    const { config } = args;
+    await registerSlashCommands({ config });
+  },
+  uninstall: async (args: { config: Config }) => {
+    const { config } = args;
+    await unregisterSlashCommands({ config });
+  },
+  validate,
+};

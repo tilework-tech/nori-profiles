@@ -1,0 +1,173 @@
+#!/bin/bash
+
+# Nori Agent Brain Status Line
+# Displays git branch, session cost, token usage, and Nori branding
+
+# Read JSON context from stdin
+INPUT=$(cat)
+
+# === CONFIG TIER ENRICHMENT ===
+# Get config tier from ~/nori-config.json
+CONFIG_TIER="unknown"
+CONFIG_FILE="$HOME/nori-config.json"
+
+if [ -f "$CONFIG_FILE" ]; then
+    # Check if auth credentials exist in config
+    HAS_AUTH=$(jq -r 'select(.username != null and .password != null and .organizationUrl != null) | "true"' "$CONFIG_FILE" 2>/dev/null)
+
+    if [ "$HAS_AUTH" = "true" ]; then
+        CONFIG_TIER="paid"
+    else
+        CONFIG_TIER="free"
+    fi
+else
+    CONFIG_TIER="free"
+fi
+
+# Inject config_tier into the JSON
+INPUT=$(echo "$INPUT" | jq --arg tier "$CONFIG_TIER" '. + {config_tier: $tier}')
+
+# === PROFILE ENRICHMENT ===
+# Get profile name from ~/nori-config.json
+PROFILE_NAME=""  # default to empty (don't show if not set)
+
+if [ -f "$CONFIG_FILE" ]; then
+    # Read profile.baseProfile from config, use empty string if not set
+    PROFILE_NAME=$(jq -r '.profile.baseProfile // ""' "$CONFIG_FILE" 2>/dev/null)
+fi
+
+# Inject profile into the JSON (can be empty string)
+INPUT=$(echo "$INPUT" | jq --arg profile "$PROFILE_NAME" '. + {profile_name: $profile}')
+
+# ANSI color codes
+MAGENTA='\033[0;35m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[0;33m'
+DIM_WHITE='\033[2;37m'
+NC='\033[0m' # No Color
+
+# Extract current working directory from JSON
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+
+# Get git branch
+BRANCH=""
+if [ -n "$CWD" ] && [ -d "$CWD" ]; then
+    BRANCH=$(cd "$CWD" && git branch --show-current 2>/dev/null)
+fi
+
+if [ -z "$BRANCH" ]; then
+    BRANCH="no git"
+fi
+
+# Extract session cost
+COST=$(echo "$INPUT" | jq -r '.cost.total_cost_usd // 0')
+COST_FORMATTED=$(printf "%.2f" "$COST")
+
+# Extract transcript path for token parsing
+TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty')
+
+# Parse transcript file to calculate actual token usage
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+    # Regular input tokens (not cached)
+    INPUT_TOKENS=$(jq -r 'select(.message.usage != null) | .message.usage.input_tokens // 0' "$TRANSCRIPT_PATH" 2>/dev/null | awk '{sum+=$1} END {print sum+0}')
+
+    # Cache creation tokens (charged at full input token rate)
+    CACHE_CREATION_TOKENS=$(jq -r 'select(.message.usage != null) | .message.usage.cache_creation_input_tokens // 0' "$TRANSCRIPT_PATH" 2>/dev/null | awk '{sum+=$1} END {print sum+0}')
+
+    # Cache read tokens (charged at ~10% of input token rate)
+    CACHE_READ_TOKENS=$(jq -r 'select(.message.usage != null) | .message.usage.cache_read_input_tokens // 0' "$TRANSCRIPT_PATH" 2>/dev/null | awk '{sum+=$1} END {print sum+0}')
+
+    # Output tokens
+    OUTPUT_TOKENS=$(jq -r 'select(.message.usage != null) | .message.usage.output_tokens // 0' "$TRANSCRIPT_PATH" 2>/dev/null | awk '{sum+=$1} END {print sum+0}')
+
+    # Context length: get most recent main chain entry's input token count (matches ccstatusline)
+    # Context length = input_tokens + cache_read + cache_creation from the MOST RECENT message
+    CONTEXT_LENGTH=$(jq -r 'select(.message.usage != null and .isSidechain != true and .isApiErrorMessage != true) |
+        (.message.usage.input_tokens // 0) +
+        (.message.usage.cache_read_input_tokens // 0) +
+        (.message.usage.cache_creation_input_tokens // 0)' "$TRANSCRIPT_PATH" 2>/dev/null |
+        tail -1)
+
+    # Default to 0 if no valid context length found
+    if [ -z "$CONTEXT_LENGTH" ]; then
+        CONTEXT_LENGTH=0
+    fi
+else
+    INPUT_TOKENS=0
+    CACHE_CREATION_TOKENS=0
+    CACHE_READ_TOKENS=0
+    OUTPUT_TOKENS=0
+    CONTEXT_LENGTH=0
+fi
+
+# Calculate total tokens (raw count)
+TOTAL_TOKENS=$((INPUT_TOKENS + CACHE_CREATION_TOKENS + CACHE_READ_TOKENS + OUTPUT_TOKENS))
+
+
+# Format tokens (k for thousands, M for millions)
+format_tokens() {
+    local count=$1
+    if [ "$count" -ge 1000000 ]; then
+        echo "scale=1; $count / 1000000" | bc | sed 's/$/M/'
+    elif [ "$count" -ge 1000 ]; then
+        echo "scale=1; $count / 1000" | bc | sed 's/$/k/'
+    else
+        echo "$count"
+    fi
+}
+
+TOKENS_FORMATTED=$(format_tokens "$TOTAL_TOKENS")
+CONTEXT_FORMATTED=$(format_tokens "$CONTEXT_LENGTH")
+
+# Extract lines added/removed
+LINES_ADDED=$(echo "$INPUT" | jq -r '.cost.total_lines_added // 0')
+LINES_REMOVED=$(echo "$INPUT" | jq -r '.cost.total_lines_removed // 0')
+LINES_FORMATTED="+${LINES_ADDED}/-${LINES_REMOVED}"
+
+# Extract config tier (passed from installer)
+CONFIG_TIER=$(echo "$INPUT" | jq -r '.config_tier // "unknown"')
+
+# Extract profile name (passed from enrichment)
+PROFILE_NAME=$(echo "$INPUT" | jq -r '.profile_name // ""')
+
+# Build branding message with upgrade link for free tier
+if [ "$CONFIG_TIER" = "free" ]; then
+    # OSC 8 hyperlink format: \033]8;;URL\033\\TEXT\033]8;;\033\\
+    BRANDING="${YELLOW}Augmented with Nori __VERSION__ (\033]8;;https://tilework.tech\033\\upgrade\033]8;;\033\\)${NC}"
+else
+    BRANDING="${YELLOW}Augmented with Nori __VERSION__ ${NC}"
+fi
+
+# Array of rotating tips about Nori features
+TIPS=(
+    "Tip: Use the webapp-testing skill to write Playwright tests for your web UIs"
+    "Tip: You can tell Nori to run any skill by name. Just ask Nori what skills it has"
+    "Tip: Want to learn more about nori? Run /nori-info"
+    "Tip: Nori can write PRs and get review using the github CLI"
+    "Tip: Run /initialize-noridocs to create docs. Nori keeps them updated."
+    "Tip: Want to skip the standard flow? Just tell Nori to skip the checklist"
+    "Tip: Try running Nori in parallel with git worktrees and multiple sessions"
+    "Tip: Leverage your whole team's knowledge with the paid Nori server"
+    "Tip: Keep an eye on your total context usage. Start new conversations regularly!"
+    "Tip: Agents love tests! Use Nori's built-in Test Driven Development to never have a regression."
+)
+
+# Select tip based on day of year + hour for gentle rotation
+DAY_OF_YEAR=$(date +%j)
+HOUR=$(date +%H)
+TIP_SEED=$((DAY_OF_YEAR * 24 + HOUR))
+TIP_INDEX=$((TIP_SEED % ${#TIPS[@]}))
+SELECTED_TIP="${TIPS[$TIP_INDEX]}"
+
+# Build status line with colors - split into three lines
+# Line 1: Main metrics (git, [profile if set], cost, tokens, context, lines)
+if [ -n "$PROFILE_NAME" ]; then
+    echo -e "${MAGENTA}⎇ ${BRANCH}${NC} | ${YELLOW}Profile: ${PROFILE_NAME}${NC} | ${GREEN}Cost: \$${COST_FORMATTED}${NC} | ${CYAN}Tokens: ${TOKENS_FORMATTED}${NC} | Context: ${CONTEXT_FORMATTED} | Lines: ${LINES_FORMATTED}"
+else
+    echo -e "${MAGENTA}⎇ ${BRANCH}${NC} | ${GREEN}Cost: \$${COST_FORMATTED}${NC} | ${CYAN}Tokens: ${TOKENS_FORMATTED}${NC} | Context: ${CONTEXT_FORMATTED} | Lines: ${LINES_FORMATTED}"
+fi
+# Line 2: Branding
+echo -e "${BRANDING}"
+# Line 3: Rotating tip
+echo -e "${DIM_WHITE}${SELECTED_TIP}${NC}"

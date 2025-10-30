@@ -1,0 +1,154 @@
+# Noridoc: Profiles
+
+Path: @/plugin/src/installer/features/profiles
+
+### Overview
+
+Profile system that provides complete, self-contained Nori configurations composed from modular mixins. Each profile is built by combining multiple mixins (\_base, \_docs, \_swe, \_paid) that contain skills/, subagents/, and slashcommands/ directories. Profiles are composed and copied to `~/.claude/profiles/` during installation and serve as the single source of truth for all feature loaders.
+
+### How it fits into the larger codebase
+
+The profiles loader executes FIRST in both interactive and non-interactive installation modes (see @/plugin/src/installer/install.ts) to populate `~/.claude/profiles/` before any other loaders run. In interactive mode, @/plugin/src/installer/install.ts prompts for profile selection by reading directories from @/plugin/src/installer/features/profiles/config/, then saves the selection to `~/nori-config.json` via @/plugin/src/installer/config.ts. All subsequent feature loaders (@/plugin/src/installer/features/claudemd/loader.ts, @/plugin/src/installer/features/skills/loader.ts, @/plugin/src/installer/features/subagents/loader.ts, @/plugin/src/installer/features/slashcommands/loader.ts) read from `~/.claude/profiles/{selectedProfile}/` to install their components. Profile switching is handled by @/plugin/src/installer/profiles.ts which updates `~/nori-config.json` while preserving auth credentials, then re-runs installation. The statusline (@/plugin/src/installer/features/statusline) displays the active profile name. The `/switch-nori-profile` slash command enables in-conversation profile switching.
+
+### Core Implementation
+
+**Profile Structure**: Each profile directory contains `CLAUDE.md` (behavioral instructions) and `profile.json` (metadata with mixins configuration). Profile content is composed from mixins defined in `_mixins/` directory: `_base` (essential skills/commands), `_docs` (documentation workflows), `_swe` (software engineering skills), and `_paid` (premium features). The `paid` mixin is automatically injected when auth credentials are present.
+
+**Built-in Profiles**: Three profiles ship with the package at @/plugin/src/installer/features/profiles/config/: `senior-swe` (co-pilot with high confirmation), `amol` (full autonomy with frequent commits), and `product-manager` (full autonomy for non-technical users). The default profile is `senior-swe` (see @/plugin/src/installer/config.ts getDefaultProfile()).
+
+**Installation Flow**: The `installProfiles()` function in @/plugin/src/installer/features/profiles/loader.ts reads profile directories from config/, loads profile.json metadata, dynamically injects the `paid` mixin if the user has auth credentials (via `injectPaidMixin()`), then composes the profile by merging content from all mixins in alphabetical order. Mixins are located in `config/_mixins/` with names like `_base`, `_docs`, `_swe`, `_paid`. Directories are merged (union of contents) while files use last-writer-wins. Profile-specific content (CLAUDE.md) is overlaid last. Built-in profiles are always overwritten during installation to receive updates. Custom profiles are preserved.
+
+**Profile Discovery**: @/plugin/src/installer/profiles.ts `listProfiles()` scans `~/.claude/profiles/` for directories containing CLAUDE.md. `switchProfile()` validates the profile exists, loads current config from `~/nori-config.json`, preserves auth credentials, updates `profile.baseProfile` field, saves back to disk, and prompts user to restart Claude Code.
+
+**Loader Ordering**: Critical fix in commit e832083 ensures profiles loader runs before all other loaders in non-interactive mode by explicitly calling `profilesLoader.run()` first in @/plugin/src/installer/install.ts, then filtering it from the remaining loaders array.
+
+### Things to Know
+
+**~/.claude/profiles/ is the single source of truth**: Commit 70da534 changed the architecture so all feature loaders read from `~/.claude/profiles/` instead of the npx package location. This enables users to create custom profiles or modify built-in ones. The profiles loader must run FIRST to populate this directory before other loaders attempt to read from it.
+
+**Directory-based vs JSON-based**: PR #197 replaced the JSON preference system with directory-based profiles, deleting 8,296 lines of code. PR #208 introduced profile composition with single inheritance via `extends` field. This PR replaces single inheritance with mixin composition, where profiles declare multiple mixins in profile.json and the loader composes them in alphabetical precedence order.
+
+**Custom profile preservation**: The loader maintains a hardcoded list of built-in profiles (`senior-swe`, `amol`, `product-manager`) at loader.ts:142. Any directory in `~/.claude/profiles/` not in this list is considered custom and never touched during installation, allowing users to safely modify or create profiles.
+
+**CLAUDE.md as validation marker**: A directory is only a valid profile if it contains CLAUDE.md. This allows config/ to contain other files without treating them as profiles.
+
+**Config separation**: Auth credentials and profile selection are separate fields in `~/nori-config.json`. The `auth` object contains username/password/organizationUrl, while `profile.baseProfile` contains the profile name. This separation allows profile switching without re-authentication.
+
+**Profile name display**: The statusline shows the active profile name (commit 5da74b7), but hides it when not explicitly set (commit ae5c085).
+
+**Mixin Composition**: Profiles specify mixins in profile.json as `{"mixins": {"base": {}, "docs": {}, "swe": {}}}`. The loader processes mixins in alphabetical order for deterministic precedence. When multiple mixins provide the same file, last writer wins. When multiple mixins provide the same directory, contents are merged (union). Conditional mixins are automatically injected based on user tier and profile categories (see @/plugin/src/installer/features/profiles/loader.ts:45-100).
+
+**Category-Specific Tier Mixins**: The loader supports multi-criteria mixin injection. When a paid user has a profile containing category mixins (e.g., `docs`, `swe`), the loader automatically injects corresponding tier-specific mixins (e.g., `docs-paid`, `swe-paid`) if they exist. This enables paid features that are specific to certain categories.
+
+**Composition Example for Paid User**:
+
+- Profile specifies: `{"mixins": {"base": {}, "docs": {}, "swe": {}}}`
+- Loader injects: `paid`, `docs-paid`, `swe-paid`
+- Final composition order: `base` → `docs` → `docs-paid` → `paid` → `swe` → `swe-paid`
+
+**Mixin Categories**: Mixins use a two-tier naming convention: `{category}` for base features and `{category}-{tier}` for tier-specific features:
+
+- `_base`: Core infrastructure (using-skills, web-search-researcher, nori-debug/info/switch-profile commands)
+- `_docs`: Documentation workflows - free tier (updating-noridocs skill, nori-initial-documenter/nori-change-documenter subagents, initialize-noridocs command)
+- `_docs-paid`: Documentation workflows - paid tier (paid-write-noridoc, paid-read-noridoc, paid-list-noridocs, paid-sync-noridocs skills, sync-noridocs slash command)
+- `_swe`: Software engineering - free tier (12 skills like TDD/debugging/git-worktrees/building-ui-ux, 3 codebase-analysis subagents)
+- `_swe-paid`: Software engineering - paid tier (reserved for future paid SWE features)
+- `_paid`: Cross-category premium features (paid-recall, paid-memorize, paid-prompt-analysis skills, knowledge-researcher subagent)
+
+### Creating Category-Specific Tier Mixins
+
+To add features that require multiple criteria (e.g., paid AND docs):
+
+1. **Create mixin directory**: `plugin/src/installer/features/profiles/config/_mixins/_{category}-{tier}/`
+2. **Follow naming convention**: Use `{category}-{tier}` format (e.g., `_docs-paid`, `_swe-paid`)
+3. **Structure matches other mixins**: Include `skills/`, `subagents/`, `slashcommands/` as needed
+4. **Automatic injection**: No code changes needed - loader detects and injects based on:
+   - User has required tier credentials (checked by `isPaidUser()`)
+   - Profile includes the base category mixin (e.g., `docs` in mixins)
+
+**Example**:
+
+```
+_mixins/
+  _docs-paid/
+    skills/
+      paid-write-noridoc/
+        SKILL.md
+        script.ts
+      paid-read-noridoc/
+        SKILL.md
+        script.ts
+```
+
+This mixin will only be injected for paid users whose profiles include the `docs` mixin.
+
+## Usage
+
+```bash
+npx nori-ai@latest switch-profile senior-swe
+npx nori-ai@latest switch-profile amol
+npx nori-ai@latest switch-profile my-custom-profile
+```
+
+### Via Slash Command
+
+Use `/switch-nori-profile` in Claude Code to:
+
+- List available profiles from `~/.claude/profiles/`
+- Switch to a specific profile
+
+## How It Works
+
+### Architecture
+
+**Profile Source of Truth: `~/.claude/profiles/`**
+
+All feature loaders (claudemd, skills, slashcommands, subagents) read from `~/.claude/profiles/${profileName}/`. This is the single source of truth.
+
+### Install Flow
+
+1. **Profiles loader runs FIRST** (before profile selection)
+
+   - Reads profile.json from each profile to get mixins configuration
+   - Injects `paid` mixin dynamically if user has auth credentials
+   - Composes profile by copying content from mixins in alphabetical order
+   - Overlays profile-specific content (CLAUDE.md, profile.json)
+   - Copies composed profiles to `~/.claude/profiles/`
+   - Overwrites built-in profiles to ensure they're up-to-date
+   - Leaves custom profiles untouched
+
+2. **User selects profile**
+
+   - Reads available profiles from `~/.claude/profiles/`
+   - Shows both built-in and custom profiles
+
+3. **Feature loaders run**
+   - Read profile configuration from `~/.claude/profiles/${selectedProfile}/`
+   - Install CLAUDE.md, skills, slashcommands, subagents from that profile
+
+### Profile Switching
+
+When you run `npx nori-ai@latest switch-profile <name>`:
+
+1. Validates profile exists in `~/.claude/profiles/`
+2. Saves profile name to `~/nori-config.json` (preserves auth credentials)
+3. Runs `npx nori-ai@latest install --non-interactive` to apply changes
+
+### Key Files
+
+- `plugin/src/installer/features/profiles/loader.ts` - Copies profile templates
+- `plugin/src/installer/profiles.ts` - Profile switching logic
+- `plugin/src/installer/install.ts` - Install flow (runs profiles loader first)
+- Feature loaders - Read from `~/.claude/profiles/${profileName}/`
+
+## Validation
+
+The `validate()` function checks:
+
+- `~/.claude/profiles/` directory exists
+- Required built-in profiles (`senior-swe`, `amol`, `product-manager`) are present
+- Run with `npx nori-ai@latest check`
+
+## Uninstallation
+
+During `npx nori-ai@latest uninstall`, the `~/.claude/profiles/` directory is removed (including custom profiles).

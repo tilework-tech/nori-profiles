@@ -1,0 +1,239 @@
+#!/usr/bin/env node
+
+/**
+ * Nori Agent Brain MCP Tool Uninstaller
+ *
+ * Removes all features installed by the Nori Agent Brain installer.
+ */
+
+import * as fs from 'fs/promises';
+import * as path from 'path';
+
+import { trackEvent } from '@/installer/analytics.js';
+import {
+  loadDiskConfig,
+  generateConfig,
+  getConfigPath,
+  type Config,
+} from '@/installer/config.js';
+import { LoaderRegistry } from '@/installer/features/loaderRegistry.js';
+import { error, success, info, warn } from '@/installer/logger.js';
+import { promptUser } from '@/installer/prompt.js';
+
+/**
+ * Prompt user for confirmation before uninstalling
+ * @returns The configuration (paid or free) if user confirms, null to exit
+ */
+const promptForUninstall = async (): Promise<{
+  config: Config;
+} | null> => {
+  info({ message: 'Nori Agent Brain Uninstaller' });
+  console.log();
+  warn({
+    message:
+      'This will remove all Nori Agent Brain features from your system.',
+  });
+  console.log();
+
+  // Check for existing configuration
+  const existingDiskConfig = await loadDiskConfig();
+
+  if (existingDiskConfig?.auth) {
+    info({ message: 'Found existing Nori configuration:' });
+    info({ message: `  Username: ${existingDiskConfig.auth.username}` });
+    info({
+      message: `  Organization URL: ${existingDiskConfig.auth.organizationUrl}`,
+    });
+    console.log();
+  } else {
+    info({
+      message:
+        'No existing configuration found. Will uninstall free mode features.',
+    });
+    console.log();
+  }
+
+  info({ message: 'The following will be removed:' });
+  if (existingDiskConfig?.auth) {
+    info({ message: '  - MCP server (agent-brain)' });
+    info({ message: '  - nori-knowledge-researcher subagent' });
+    info({ message: '  - Automatic memorization hooks' });
+  }
+  info({ message: '  - Desktop notification hook' });
+  info({ message: '  - Status line configuration' });
+  info({ message: '  - CLAUDE.md (with confirmation)' });
+  info({ message: '  - Nori configuration file' });
+  console.log();
+
+  const proceed = await promptUser({
+    prompt: 'Do you want to proceed with uninstallation? (y/n): ',
+  });
+
+  if (!proceed.match(/^[Yy]$/)) {
+    info({ message: 'Uninstallation cancelled.' });
+    return null;
+  }
+
+  console.log();
+
+  return {
+    config: generateConfig({ diskConfig: existingDiskConfig }),
+  };
+};
+
+/**
+ * Remove the nori-config.json file and .nori-installed-version file
+ */
+const removeConfigFile = async (): Promise<void> => {
+  const configPath = getConfigPath();
+  const versionPath = path.join(
+    process.env.HOME || '~',
+    '.nori-installed-version',
+  );
+
+  info({ message: 'Removing Nori configuration files...' });
+
+  try {
+    await fs.access(configPath);
+    await fs.unlink(configPath);
+    success({ message: `✓ Configuration file removed: ${configPath}` });
+  } catch {
+    info({ message: 'Configuration file not found (may not exist)' });
+  }
+
+  // Also remove version file
+  try {
+    await fs.access(versionPath);
+    await fs.unlink(versionPath);
+    success({ message: `✓ Version file removed: ${versionPath}` });
+  } catch {
+    info({ message: 'Version file not found (may not exist)' });
+  }
+};
+
+/**
+ * Core uninstall logic (can be called programmatically)
+ * Preserves config file by default (for upgrades). Only removes config when removeConfig=true.
+ * @param args - Configuration arguments
+ * @param args.removeConfig - Whether to remove the config file (default: false)
+ * @param args.installedVersion - Version being uninstalled (for logging)
+ */
+export const runUninstall = async (args?: {
+  removeConfig?: boolean | null;
+  installedVersion?: string | null;
+}): Promise<void> => {
+  const { removeConfig, installedVersion } = args || {};
+
+  // Load config to determine install type (defaults to free if none exists)
+  const existingDiskConfig = await loadDiskConfig();
+  const config = generateConfig({ diskConfig: existingDiskConfig });
+
+  // Log installed version for debugging
+  if (installedVersion) {
+    info({ message: `Uninstalling version: ${installedVersion}` });
+  }
+
+  // Track uninstallation start
+  trackEvent({
+    eventName: 'plugin_uninstall_started',
+    eventParams: {
+      install_type: config.installType,
+    },
+  });
+
+  // Load all feature loaders
+  const registry = LoaderRegistry.getInstance();
+  const loaders = registry.getAll();
+
+  // Execute uninstallers sequentially to avoid race conditions
+  // (hooks and statusline both read/write settings.json)
+  for (const loader of loaders) {
+    try {
+      await loader.uninstall({ config });
+    } catch (err: any) {
+      warn({
+        message: `Failed to uninstall ${loader.name}: ${err.message}`,
+      });
+    }
+  }
+
+  // Remove config file only if explicitly requested (e.g., from user-initiated uninstall)
+  if (removeConfig) {
+    console.log();
+    await removeConfigFile();
+  }
+
+  // Track uninstallation completion
+  trackEvent({
+    eventName: 'plugin_uninstall_completed',
+    eventParams: {
+      install_type: config.installType,
+    },
+  });
+};
+
+/**
+ * Main uninstaller entry point
+ * @param args - Configuration arguments
+ * @param args.nonInteractive - Whether to run in non-interactive mode (skips prompts, preserves config)
+ */
+export const main = async (args?: {
+  nonInteractive?: boolean | null;
+}): Promise<void> => {
+  const { nonInteractive } = args || {};
+
+  try {
+    // Initialize analytics
+
+    if (nonInteractive) {
+      // Non-interactive mode: preserve config (for upgrades/autoupdate)
+      await runUninstall({ removeConfig: false });
+    } else {
+      // Interactive mode: prompt for confirmation and remove config
+      const result = await promptForUninstall();
+
+      if (result == null) {
+        process.exit(0);
+      }
+
+      // Run uninstall and remove config (user-initiated uninstall)
+      await runUninstall({ removeConfig: true });
+    }
+
+    // Uninstallation complete
+    console.log();
+    success({
+      message:
+        '======================================================================',
+    });
+    success({
+      message:
+        '       Nori Agent Brain Uninstallation Complete!              ',
+    });
+    success({
+      message:
+        '======================================================================',
+    });
+    console.log();
+
+    info({ message: 'All features have been removed.' });
+    console.log();
+    warn({
+      message:
+        'Note: You must restart Claude Code for changes to take effect!',
+    });
+    console.log();
+    info({
+      message:
+        'To completely remove the package, run: npm uninstall -g nori-ai',
+    });
+  } catch (err: any) {
+    error({ message: err.message });
+    process.exit(1);
+  }
+};
+
+// Run the uninstaller if executed directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}

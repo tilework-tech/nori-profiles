@@ -1,0 +1,25 @@
+# Noridoc: api
+
+Path: @/plugin/src/api
+
+### Overview
+
+Client API for communicating with the Nori Agent Brain backend server, providing typed interfaces for artifacts, queries, conversation operations, analytics (report generation and event tracking), noridocs management, prompt analysis, and webhook management.
+
+### How it fits into the larger codebase
+
+This folder contains the API client used by paid skills in @/plugin/src/installer/features/skills/config/paid-\* to communicate with @/server/src/endpoints. It mirrors the API structure in @/ui/src/api/apiClient but uses Firebase Authentication with cached tokens via @/plugin/src/providers/firebase.ts instead of direct Firebase UI integration. The base.ts module handles authentication via AuthManager and request formatting via apiRequest, while artifacts.ts, query.ts, conversation.ts, analytics.ts, noridocs.ts, promptAnalysis.ts, webhooks.ts, and webhookRequests.ts provide typed methods for specific endpoints. The API contracts here must stay in sync with @/server/src/endpoints and @/ui/src/api/apiClient.
+
+### Core Implementation
+
+The base.ts module exports ConfigManager (loads credentials from ~/nori-config.json) and apiRequest (makes authenticated HTTP requests). AuthManager internally handles Firebase authentication by calling signInWithEmailAndPassword with credentials from ConfigManager, caching tokens for 55 minutes, and automatically refreshing on 401 responses. All apiRequest calls include the Firebase ID token in Authorization: Bearer {token} headers. Each API module exports typed functions calling apiRequest with appropriate paths and payloads. The artifacts.ts module defines ArtifactType enum with seven values: 'transcript', 'summary', 'recipe', 'webhook', 'memory', 'noridoc', 'no-type'. The artifactsApi includes create(), replace(), getDistinctColumnValues(), and getDistinctUserEmails() methods, with all create/replace operations passing actor: 'claude-code'. The analytics.ts module exports generateDailyReport(), generateUserReport(), and trackEvent() - trackEvent proxies analytics events to @/server/src/endpoints/analytics/trackAnalyticsEvent which forwards to GA4, keeping the GA4 API secret secure on the server. The noridocs.ts module provides create(), read(), readByPath(), update(), delete(), list(), listVersions(), and readVersion() methods for managing documentation artifacts where sourceUrl stores the filePath. The webhooks.ts and webhookRequests.ts modules provide full CRUD operations for webhook management and request monitoring. The index.ts aggregates all APIs into apiClient and exports a handshake() function for testing authentication via /auth/handshake endpoint.
+
+### Things to Know
+
+**Authentication Architecture:** Unlike the original implementation that sent username/password in request bodies, the current system uses Firebase Authentication client-side. The AuthManager in base.ts uses the FirebaseProvider from @/plugin/src/providers/firebase.ts and calls signInWithEmailAndPassword to obtain Firebase ID tokens, caches them with 55-minute expiry (5 minutes before the 1-hour Firebase token expiry), and automatically refreshes tokens on 401 responses with exponential backoff retry logic (up to 3 retries by default). This matches the UI authentication flow but operates in a Node.js environment rather than browser.
+
+**Type Synchronization:** The ArtifactType enum in artifacts.ts must stay synchronized with @/server/src/persistence/Artifact.ts and @/ui/src/api/apiClient/artifacts.ts. All three define the same seven types (including 'noridoc') to maintain contract compatibility. The type field enables distinction between user-created memories (type: 'memory'), documentation (type: 'noridoc'), webhook-ingested data (type: 'webhook'), and system-generated artifacts (type: 'summary', 'transcript', 'recipe').
+
+**Actor Field:** All artifact mutations (create, replace) and conversation operations (summarize) include actor: 'claude-code' to identify the plugin as the source. This differs from the UI which may use different actor values.
+
+The organizationUrl in ~/nori-config.json determines the backend server (production or local development). Paid skills are the primary consumers of this API client, importing apiClient from @/api/index.js and calling methods like apiClient.promptAnalysis.analyze() which connects to @/server/src/endpoints/promptAnalysis/handler.ts. The API client depends on @/plugin/src/providers/firebase.ts for authentication, which is a shared provider used across the plugin package.

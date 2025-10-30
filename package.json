@@ -1,0 +1,41 @@
+{
+  "name": "nori-ai",
+  "version": "14.2.4",
+  "keywords": [
+    "claude code",
+    "claude",
+    "agent",
+    "plugin",
+    "context engineering"
+  ],
+  "description": "Nori Agent Brain plugin for Claude Code",
+  "type": "module",
+  "bin": {
+    "nori-ai": "./build/src/installer/cli.js"
+  },
+  "scripts": {
+    "build": "./scripts/build.sh",
+    "prepare": "npm run build",
+    "watch": "tsc --watch",
+    "dev": "tsc && tsc-alias && node build/index.js",
+    "inspector": "npx @modelcontextprotocol/inspector build/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "firebase": "^12.3.0",
+    "firebase-admin": "^13.5.0",
+    "glob": "^11.0.3",
+    "minimist": "^1.2.8",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/minimist": "^1.2.5",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.11",
+    "tsc-alias": "^1.8.16",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.0"
+  }
+}

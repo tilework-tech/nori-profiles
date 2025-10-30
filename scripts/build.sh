@@ -1,0 +1,138 @@
+#!/bin/bash
+
+# Plugin Package Build Script
+#
+# This script orchestrates the complete build process for the Nori plugin package.
+# It compiles TypeScript, resolves path aliases, bundles paid skills, and prepares
+# all configuration files for installation.
+#
+# Build Pipeline:
+# 1. TypeScript compilation (tsc)
+# 2. Path alias resolution (tsc-alias)
+# 3. Paid skills bundling (esbuild)
+# 4. File permissions setup
+# 5. Configuration file copying
+# 6. Version substitution
+
+set -e  # Exit on any error
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}================================${NC}"
+echo -e "${BLUE}  Nori Plugin Package Build${NC}"
+echo -e "${BLUE}================================${NC}"
+echo ""
+
+# ============================================================================
+# STEP 1: TypeScript Compilation
+# ============================================================================
+echo -e "${BLUE}[1/6] Compiling TypeScript...${NC}"
+tsc
+echo -e "${GREEN}✓ TypeScript compilation complete${NC}"
+echo ""
+
+# ============================================================================
+# STEP 2: Path Alias Resolution
+# ============================================================================
+# Converts TypeScript path aliases (@/* -> src/*) to relative paths
+# Example: '@/api/index.js' becomes '../../../../../api/index.js'
+echo -e "${BLUE}[2/6] Resolving path aliases...${NC}"
+tsc-alias
+echo -e "${GREEN}✓ Path aliases resolved${NC}"
+echo ""
+
+# ============================================================================
+# STEP 3: Bundle Scripts
+# ============================================================================
+# Uses esbuild to create standalone executables for:
+# - Paid skills: script files that need API access
+# - Hook scripts: scripts that run on Claude Code events
+# - Inlines all dependencies (minimist, API client, config)
+# - Resolves all imports at build time
+# - Produces single-file executables
+# See: src/scripts/bundle-skills-README.md for details
+echo -e "${BLUE}[3/6] Bundling scripts...${NC}"
+node build/src/scripts/bundle-skills.js
+echo -e "${GREEN}✓ Scripts bundled${NC}"
+echo ""
+
+# ============================================================================
+# STEP 4: Set File Permissions
+# ============================================================================
+# Make executables runnable with chmod +x
+echo -e "${BLUE}[4/6] Setting file permissions...${NC}"
+
+# Core executables
+chmod +x build/src/installer/cli.js
+chmod +x build/src/installer/install.js
+chmod +x build/src/installer/uninstall.js
+
+# Hook scripts
+chmod +x build/src/installer/features/hooks/config/autoupdate.js
+chmod +x build/src/installer/features/hooks/config/summarize.js
+chmod +x build/src/installer/features/hooks/config/summarize-notification.js
+
+# Paid skill scripts (all script.js files in paid-* directories within profiles)
+find build/src/installer/features/profiles/config -path '*/skills/paid-*/script.js' -exec chmod +x {} \; 2>/dev/null || true
+
+echo -e "${GREEN}✓ File permissions set${NC}"
+echo ""
+
+# ============================================================================
+# STEP 5: Copy Configuration Files
+# ============================================================================
+# TypeScript only compiles .ts files, so we need to manually copy
+# configuration files (.md, .sh) to the build directory
+echo -e "${BLUE}[5/6] Copying configuration files...${NC}"
+
+# Create required directories
+mkdir -p build/src/installer/features/claudemd/config
+mkdir -p build/src/installer/features/hooks/config
+mkdir -p build/src/installer/features/statusline/config
+mkdir -p build/src/installer/features/profiles/config
+
+# Copy configuration files for specific features that still have config dirs
+cp src/installer/features/claudemd/config/*.md build/src/installer/features/claudemd/config/ 2>/dev/null || true
+cp src/installer/features/hooks/config/*.sh build/src/installer/features/hooks/config/ 2>/dev/null || true
+cp src/installer/features/statusline/config/*.sh build/src/installer/features/statusline/config/ 2>/dev/null || true
+
+# Copy entire profile directories (which contain skills, subagents, slashcommands, CLAUDE.md)
+cp -r src/installer/features/profiles/config/* build/src/installer/features/profiles/config/ 2>/dev/null || true
+
+# Make shell scripts executable
+chmod +x build/src/installer/features/hooks/config/*.sh 2>/dev/null || true
+chmod +x build/src/installer/features/statusline/config/*.sh 2>/dev/null || true
+
+echo -e "${GREEN}✓ Configuration files copied${NC}"
+echo ""
+
+# ============================================================================
+# STEP 6: Version Substitution
+# ============================================================================
+# Replace __VERSION__ placeholder with actual version from package.json
+# This allows the status line to display the current package version
+echo -e "${BLUE}[6/6] Substituting version strings...${NC}"
+
+VERSION=$(jq -r .version package.json)
+perl -pi -e "s/__VERSION__/v${VERSION}/g" build/src/installer/features/statusline/config/nori-statusline.sh
+
+echo -e "${GREEN}✓ Version substituted (v${VERSION})${NC}"
+echo ""
+
+# ============================================================================
+# Build Complete
+# ============================================================================
+echo -e "${GREEN}================================${NC}"
+echo -e "${GREEN}  ✓ Build Complete${NC}"
+echo -e "${GREEN}================================${NC}"
+echo ""
+echo -e "Build output: ${BLUE}build/${NC}"
+echo -e "Next steps:"
+echo -e "  - Run ${YELLOW}node build/src/installer/install.js${NC} to install"
+echo -e "  - Run ${YELLOW}npm test${NC} to run tests"
+echo ""

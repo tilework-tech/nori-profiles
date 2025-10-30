@@ -1,0 +1,503 @@
+/**
+ * Profiles feature loader
+ * Installs profile templates to ~/.claude/profiles/
+ */
+
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+import type { Config } from '@/installer/config.js';
+import type {
+  Loader,
+  ValidationResult,
+} from '@/installer/features/loaderRegistry.js';
+
+import { CLAUDE_PROFILES_DIR, CLAUDE_SETTINGS_FILE } from '@/installer/env.js';
+import {
+  readProfileMetadata,
+  type ProfileMetadata,
+} from '@/installer/features/profiles/types.js';
+import { success, info, warn } from '@/installer/logger.js';
+
+// Get directory of this loader file
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Profile templates config directory (relative to this loader)
+const PROFILE_TEMPLATES_DIR = path.join(__dirname, 'config');
+
+// Mixins directory (contains reusable profile components)
+const MIXINS_DIR = path.join(PROFILE_TEMPLATES_DIR, '_mixins');
+
+/**
+ * Check if user is a paid tier user
+ * @param args - Configuration arguments
+ * @param args.config - Runtime configuration
+ *
+ * @returns True if user has auth credentials and paid install type
+ */
+const isPaidUser = (args: { config: Config }): boolean => {
+  const { config } = args;
+  return config.auth != null && config.installType === 'paid';
+};
+
+/**
+ * Inject conditional mixins dynamically based on config and profile metadata
+ *
+ * This handles multi-criteria mixin injection:
+ * 1. Cross-category paid mixin (_paid) - added for all paid users
+ * 2. Category-specific tier mixins (_docs-paid, _swe-paid) - added when:
+ *    - User is paid AND
+ *    - Profile contains that category mixin
+ *
+ * @param args - Function arguments
+ * @param args.metadata - Profile metadata
+ * @param args.config - Runtime configuration
+ *
+ * @returns Metadata with conditional mixins added if applicable
+ */
+const injectConditionalMixins = (args: {
+  metadata: ProfileMetadata;
+  config: Config;
+}): ProfileMetadata => {
+  const { metadata, config } = args;
+
+  // Check if user is paid
+  const isPaid = isPaidUser({ config });
+
+  if (!isPaid) {
+    return metadata;
+  }
+
+  const newMixins = { ...metadata.mixins };
+
+  // Inject cross-category paid mixin if not already present
+  if (!('paid' in newMixins)) {
+    newMixins.paid = {};
+  }
+
+  // Inject category-specific paid mixins based on categories in profile
+  // Only inject if both:
+  // 1. The base category mixin is present (e.g., 'docs')
+  // 2. The corresponding tier-specific mixin is not already present (e.g., 'docs-paid')
+
+  const categories = Object.keys(metadata.mixins).filter(
+    (name) => !name.endsWith('-paid') && name !== 'base' && name !== 'paid',
+  );
+
+  for (const category of categories) {
+    const tierMixinName = `${category}-paid`;
+    if (!(tierMixinName in newMixins)) {
+      newMixins[tierMixinName] = {};
+    }
+  }
+
+  return {
+    ...metadata,
+    mixins: newMixins,
+  };
+};
+
+/**
+ * Get mixin paths in precedence order (alphabetical)
+ * @param args - Function arguments
+ * @param args.metadata - Profile metadata with mixins
+ *
+ * @returns Array of mixin directory paths in alphabetical order
+ */
+const getMixinPaths = (args: { metadata: ProfileMetadata }): Array<string> => {
+  const { metadata } = args;
+
+  // Sort mixin names alphabetically for deterministic precedence
+  const mixinNames = Object.keys(metadata.mixins).sort();
+
+  // Map to full paths, prepending _ prefix
+  return mixinNames.map((name) => path.join(MIXINS_DIR, `_${name}`));
+};
+
+/**
+ * Install profile templates to ~/.claude/profiles/
+ * Handles profile composition by resolving inheritance from base profiles
+ *
+ * This function copies built-in profiles from the npx package to ~/.claude/profiles/.
+ * Built-in profiles are ALWAYS overwritten to ensure they stay up-to-date.
+ * Custom profiles (those that don't exist in the npx package) are never touched.
+ *
+ * @param args - Configuration arguments
+ * @param args.config - Runtime configuration
+ */
+const installProfiles = async (args: { config: Config }): Promise<void> => {
+  const { config: _config } = args;
+
+  info({ message: 'Installing Nori profiles...' });
+
+  // Create profiles directory if it doesn't exist
+  await fs.mkdir(CLAUDE_PROFILES_DIR, { recursive: true });
+
+  let installedCount = 0;
+  let skippedCount = 0;
+
+  // Read all directories from templates directory (these are built-in profiles)
+  const entries = await fs.readdir(PROFILE_TEMPLATES_DIR, {
+    withFileTypes: true,
+  });
+
+  // Install user-facing profiles with composition
+  // Internal profiles (like _base) are NEVER installed - they only exist for composition
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('_')) {
+      continue; // Skip non-directories and internal profiles
+    }
+
+    const profileSrcDir = path.join(PROFILE_TEMPLATES_DIR, entry.name);
+    const profileDestDir = path.join(CLAUDE_PROFILES_DIR, entry.name);
+
+    try {
+      // User-facing profile - must have CLAUDE.md
+      const claudeMdPath = path.join(profileSrcDir, 'CLAUDE.md');
+      await fs.access(claudeMdPath);
+
+      // Remove existing profile directory if it exists (ensures built-ins stay updated)
+      await fs.rm(profileDestDir, { recursive: true, force: true });
+
+      // Read profile metadata and inject paid mixin if applicable
+      const profileJsonPath = path.join(profileSrcDir, 'profile.json');
+      let metadata: ProfileMetadata | null = null;
+
+      try {
+        await fs.access(profileJsonPath);
+        metadata = await readProfileMetadata({
+          profileDir: profileSrcDir,
+        });
+
+        // Inject conditional mixins if user is paid
+        metadata = injectConditionalMixins({ metadata, config: _config });
+      } catch {
+        // No profile.json - skip composition
+      }
+
+      // Create destination directory
+      await fs.mkdir(profileDestDir, { recursive: true });
+
+      // Compose mixins in alphabetical precedence order
+      if (metadata?.mixins != null) {
+        const mixinPaths = getMixinPaths({ metadata });
+        const mixinNames = Object.keys(metadata.mixins).sort();
+
+        info({
+          message: `  Composing from mixins: ${mixinNames.join(', ')}`,
+        });
+
+        // Copy content from each mixin in order
+        for (const mixinPath of mixinPaths) {
+          try {
+            await fs.access(mixinPath);
+
+            const mixinEntries = await fs.readdir(mixinPath, {
+              withFileTypes: true,
+            });
+
+            for (const mixinEntry of mixinEntries) {
+              const srcPath = path.join(mixinPath, mixinEntry.name);
+              const destPath = path.join(profileDestDir, mixinEntry.name);
+
+              if (mixinEntry.isDirectory()) {
+                // Directories: merge contents (union)
+                await fs.cp(srcPath, destPath, { recursive: true });
+              } else {
+                // Files: last writer wins
+                await fs.copyFile(srcPath, destPath);
+              }
+            }
+          } catch {
+            warn({
+              message: `  Mixin ${path.basename(
+                mixinPath,
+              )} not found, skipping`,
+            });
+          }
+        }
+      }
+
+      // Copy/overlay profile-specific content (CLAUDE.md, profile.json, etc.)
+      const profileEntries = await fs.readdir(profileSrcDir, {
+        withFileTypes: true,
+      });
+
+      for (const profileEntry of profileEntries) {
+        const srcPath = path.join(profileSrcDir, profileEntry.name);
+        const destPath = path.join(profileDestDir, profileEntry.name);
+
+        if (profileEntry.isDirectory()) {
+          await fs.cp(srcPath, destPath, { recursive: true });
+        } else {
+          await fs.copyFile(srcPath, destPath);
+        }
+      }
+
+      success({
+        message: `✓ ${entry.name} profile installed`,
+      });
+      installedCount++;
+    } catch {
+      warn({
+        message: `Profile directory ${entry.name} not found or invalid, skipping`,
+      });
+      skippedCount++;
+    }
+  }
+
+  if (installedCount > 0) {
+    success({
+      message: `Successfully installed ${installedCount} profile${
+        installedCount === 1 ? '' : 's'
+      }`,
+    });
+    info({ message: `Profiles directory: ${CLAUDE_PROFILES_DIR}` });
+  }
+  if (skippedCount > 0) {
+    warn({
+      message: `Skipped ${skippedCount} profile${
+        skippedCount === 1 ? '' : 's'
+      } (not found or invalid)`,
+    });
+  }
+
+  // Configure permissions for profiles directory
+  await configureProfilesPermissions();
+};
+
+/**
+ * Configure permissions for profiles directory
+ * Adds profiles directory to permissions.additionalDirectories in settings.json
+ */
+const configureProfilesPermissions = async (): Promise<void> => {
+  info({ message: 'Configuring permissions for profiles directory...' });
+
+  // Create .claude directory if it doesn't exist
+  await fs.mkdir(path.dirname(CLAUDE_SETTINGS_FILE), { recursive: true });
+
+  // Read or initialize settings
+  let settings: any = {};
+  try {
+    const content = await fs.readFile(CLAUDE_SETTINGS_FILE, 'utf-8');
+    settings = JSON.parse(content);
+  } catch {
+    settings = {
+      $schema: 'https://json.schemastore.org/claude-code-settings.json',
+    };
+  }
+
+  // Initialize permissions object if needed
+  if (!settings.permissions) {
+    settings.permissions = {};
+  }
+
+  // Initialize additionalDirectories array if needed
+  if (!settings.permissions.additionalDirectories) {
+    settings.permissions.additionalDirectories = [];
+  }
+
+  // Add profiles directory if not already present
+  const profilesPath = CLAUDE_PROFILES_DIR;
+  if (!settings.permissions.additionalDirectories.includes(profilesPath)) {
+    settings.permissions.additionalDirectories.push(profilesPath);
+  }
+
+  // Write back to file
+  await fs.writeFile(CLAUDE_SETTINGS_FILE, JSON.stringify(settings, null, 2));
+  success({ message: `✓ Configured permissions for ${CLAUDE_PROFILES_DIR}` });
+};
+
+/**
+ * Uninstall profiles directory
+ * @param args - Configuration arguments
+ * @param args.config - Runtime configuration
+ */
+const uninstallProfiles = async (args: { config: Config }): Promise<void> => {
+  const { config: _config } = args;
+
+  info({ message: 'Removing Nori profiles...' });
+
+  try {
+    await fs.access(CLAUDE_PROFILES_DIR);
+    await fs.rm(CLAUDE_PROFILES_DIR, { recursive: true, force: true });
+    success({ message: '✓ Profiles directory removed' });
+  } catch {
+    info({ message: 'Profiles directory not found (may not be installed)' });
+  }
+
+  // Remove permissions configuration
+  await removeProfilesPermissions();
+};
+
+/**
+ * Remove profiles directory permissions
+ * Removes profiles directory from permissions.additionalDirectories in settings.json
+ */
+const removeProfilesPermissions = async (): Promise<void> => {
+  info({ message: 'Removing profiles directory permissions...' });
+
+  try {
+    const content = await fs.readFile(CLAUDE_SETTINGS_FILE, 'utf-8');
+    const settings = JSON.parse(content);
+
+    if (settings.permissions?.additionalDirectories) {
+      const profilesPath = CLAUDE_PROFILES_DIR;
+      settings.permissions.additionalDirectories =
+        settings.permissions.additionalDirectories.filter(
+          (dir: string) => dir !== profilesPath,
+        );
+
+      // Clean up empty arrays/objects
+      if (settings.permissions.additionalDirectories.length === 0) {
+        delete settings.permissions.additionalDirectories;
+      }
+      if (Object.keys(settings.permissions).length === 0) {
+        delete settings.permissions;
+      }
+
+      await fs.writeFile(
+        CLAUDE_SETTINGS_FILE,
+        JSON.stringify(settings, null, 2),
+      );
+      success({ message: '✓ Removed profiles directory permissions' });
+    } else {
+      info({ message: 'No permissions found in settings.json' });
+    }
+  } catch (err) {
+    warn({ message: `Could not remove permissions: ${err}` });
+  }
+};
+
+/**
+ * Validate profiles installation
+ * @param args - Configuration arguments
+ * @param args.config - Runtime configuration
+ *
+ * @returns Validation result
+ */
+const validate = async (args: {
+  config: Config;
+}): Promise<ValidationResult> => {
+  const { config: _config } = args;
+
+  const errors: Array<string> = [];
+
+  // Check if profiles directory exists
+  try {
+    await fs.access(CLAUDE_PROFILES_DIR);
+  } catch {
+    errors.push(`Profiles directory not found at ${CLAUDE_PROFILES_DIR}`);
+    errors.push('Run "nori-ai install" to create the profiles directory');
+    return {
+      valid: false,
+      message: 'Profiles directory not found',
+      errors,
+    };
+  }
+
+  // Check if required profile directories are present
+  // Note: _base is NOT checked here because it's never installed to ~/.claude/profiles/
+  // It only exists in source templates for composition
+  const requiredProfiles = [
+    'senior-swe',
+    'amol',
+    'product-manager',
+    'documenter',
+    'none',
+  ];
+  const missingProfiles: Array<string> = [];
+
+  for (const profile of requiredProfiles) {
+    const profileDir = path.join(CLAUDE_PROFILES_DIR, profile);
+    const claudeMdPath = path.join(profileDir, 'CLAUDE.md');
+    const profileJsonPath = path.join(profileDir, 'profile.json');
+
+    try {
+      await fs.access(claudeMdPath);
+      await fs.access(profileJsonPath);
+    } catch {
+      missingProfiles.push(profile);
+    }
+  }
+
+  if (missingProfiles.length > 0) {
+    errors.push(
+      `Missing ${
+        missingProfiles.length
+      } required profile(s): ${missingProfiles.join(', ')}`,
+    );
+    errors.push('Run "nori-ai install" to install missing profiles');
+  }
+
+  if (errors.length > 0) {
+    return {
+      valid: false,
+      message: 'Some required profiles or base components are not installed',
+      errors,
+    };
+  }
+
+  // Check if permissions are configured in settings.json
+  try {
+    const content = await fs.readFile(CLAUDE_SETTINGS_FILE, 'utf-8');
+    const settings = JSON.parse(content);
+
+    if (
+      !settings.permissions?.additionalDirectories?.includes(
+        CLAUDE_PROFILES_DIR,
+      )
+    ) {
+      errors.push(
+        'Profiles directory not configured in permissions.additionalDirectories',
+      );
+      errors.push('Run "nori-ai install" to configure permissions');
+      return {
+        valid: false,
+        message: 'Profiles permissions not configured',
+        errors,
+      };
+    }
+  } catch {
+    errors.push('Could not read or parse settings.json');
+    return {
+      valid: false,
+      message: 'Settings file error',
+      errors,
+    };
+  }
+
+  return {
+    valid: true,
+    message: `All required profiles are properly installed`,
+    errors: null,
+  };
+};
+
+/**
+ * Profiles feature loader
+ */
+export const profilesLoader: Loader = {
+  name: 'profiles',
+  description: 'Install Nori profile templates to ~/.claude/profiles/',
+  run: async (args: { config: Config }) => {
+    const { config } = args;
+    await installProfiles({ config });
+  },
+  uninstall: async (args: { config: Config }) => {
+    const { config } = args;
+    await uninstallProfiles({ config });
+  },
+  validate,
+};
+
+/**
+ * Export internal functions for testing
+ */
+export const _testing = {
+  isPaidUser,
+  injectConditionalMixins,
+  getMixinPaths,
+};

@@ -1,0 +1,19 @@
+# Noridoc: statusline
+
+Path: @/plugin/src/installer/features/statusline
+
+### Overview
+
+Feature loader for installing status line script into Claude Code, enabling real-time display of git branch, active profile name, token usage, conversation costs, and rotating tips about Nori features.
+
+### How it fits into the larger codebase
+
+This feature loader (loader.ts) is registered with @/plugin/src/installer/features/loaderRegistry.ts and executed during installation. It copies the status line script from @/plugin/src/installer/features/statusline/config to the Claude Code status line directory (~/.claude/status-line), enabling the status line display feature that shows conversation metrics and helpful tips at the bottom of the Claude Code interface.
+
+### Core Implementation
+
+The loader creates the status line directory if needed, copies nori-statusline.sh from the config subdirectory, and sets it as executable. The loader runs in both free and paid modes since status line doesn't require backend access. The status line script is invoked by Claude Code during conversation updates and receives conversation data via stdin. The script displays three lines: metrics (git branch, optional profile name, cost, tokens, context, lines), branding, and a rotating tip. Profile name is read from ~/nori-config.json (profile.baseProfile field) and only displayed if set - when not set or config missing, the profile section is omitted entirely. Profile name appears in yellow between git branch and cost metrics to help users understand which behavioral preset (senior-swe, amol, product-manager) is currently active. Tips rotate deterministically every hour based on day_of_year \* 24 + hour, cycling through 30 tips about skills, knowledge management, development workflow, UI features, and advanced patterns.
+
+### Things to Know
+
+The status line provides real-time feedback to users about their conversation state including current git branch, optional active Nori profile, token usage, estimated costs, and helpful tips about available Nori features. Profile name is conditionally displayed only when ~/nori-config.json exists and contains a profile.baseProfile value - this helps users understand which behavioral preset (senior-swe, amol, product-manager) is currently active without cluttering the display when no profile is configured. The statusline script enriches the incoming conversation data by reading both config tier (free/paid) and profile name from ~/nori-config.json before rendering output. It requires no backend access so works in both free and paid modes. The script must be executable and fast to avoid UI lag. Changes to statusline script require restarting Claude Code to take effect. Cross-platform compatible (macOS and Linux).

@@ -1,0 +1,37 @@
+# Top level
+build/*
+bin/*
+tilework-creds.json
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Editor directories and files
+.vscode/*
+*.suo
+*.sln
+*.sw?
+
+# OSX
+.DS_Store
+
+# Dependencies
+node_modules/
+
+# Testing
+coverage/
+__diff_output__/
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment Files
+.env
+
+# Keys.
+*.pem
+
+# Worktrees
+.worktrees/

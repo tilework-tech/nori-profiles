@@ -1,0 +1,13 @@
+# Source files (we ship the built version)
+src/
+tsconfig.json
+
+# Development files
+node_modules/
+.nvmrc
+
+# Keep these for installation
+!install.sh
+!bin/
+!hooks/
+!build/
