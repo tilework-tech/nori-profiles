@@ -19,7 +19,7 @@ description: Use when design is complete and you need detailed implementation ta
 
 ## Overview
 
-Write comprehensive implementation plans assuming the engineer has zero context for our codebase and questionable taste. Document everything they need to know: which files to touch for each task, code, testing, docs they might need to check, how to test it. Give them the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
+Write comprehensive implementation plans assuming the engineer has zero context for our codebase and questionable taste. Document everything they need to know: which files to touch for each task, code, testing, docs they might need to check, how to test it. Give them the whole plan as bite-sized tasks. DRY. YAGNI. TDD.
 
 Assume they are a talented developer. However, assume that they know almost nothing about our toolset or problem domain. Assume they don't know good test design very well.
 
@@ -29,7 +29,8 @@ Do not add code, but include enough detail that the necessary code is obvious.
 
 **Each step is one action (2-5 minutes):**
 
-- "Write the failing test" - step
+- "Write the failing test for `behavior`" - step
+- "Write the failing test for `other behavior`"
 - "Run it to make sure it fails" - step
 - "Implement the minimal code to make the test pass" - step
 - "Run the tests and make sure they pass" - step
@@ -51,46 +52,31 @@ Do not add code, but include enough detail that the necessary code is obvious.
 ---
 ```
 
-## Task Structure (Example)
+## Test Section
 
-````markdown
-### Task N: [Component Name]
+Every plan MUST have a test section. This should be written first, and should
+document how you plan to test the *behavior*.
 
-**Files:**
+```markdown
 
-- Create: `exact/path/to/file.py`
-- Modify: `exact/path/to/existing.py:123-145`
-- Test: `tests/exact/path/to/test.py`
+**Testing Plan**
 
-**Step 1: Write the failing test**
+I will add an integration test that ensures foo behaves like blah. The
+integration test will mock A/B/C. The test will then call function/cli/etc.
 
-Create a test, 'test_specific_behavior', that will test 'behavior' by ensuring
-running function foo with input bar, and asserting that the result is baz.
-
-**Step 2: Run test to verify it fails**
-
-Run: `pytest tests/path/test.py::test_name -v`
-Expected: FAIL with "function not defined"
-
-**Step 3: Write minimal implementation**
-
-`Implement minimal behavior by adding foo to bar and baz to qux.`
-
-**Step 4: Run test to verify it passes**
-
-Run: `pytest tests/path/test.py::test_name -v`
-Expected: PASS
-
-**Step 5: Commit**
-
-```bash
-git add tests/path/test.py src/path/file.py
-git commit -m "feat: add specific feature"
+I will add a unit test that ensures baz behaves like qux...
 ```
 
-````
+You should end EVERY testing plan section by writing:
 
-## Plan Document Header
+```markdown
+NOTE: I will write all tests before I add any implementation behavior.
+```
+
+<system-reminder>Your tests should NOT contain tests for datastructures or
+types. Your tests should NOT simply test mocks. Always test actual behavior.</system-reminder>
+
+## Plan Document Footer
 
 **Every plan MUST end with this footer:**
 
@@ -105,7 +91,8 @@ git commit -m "feat: add specific feature"
 ```
 
 ## Remember
+
 - Exact file paths always, taking into account worktrees
 - Exact commands with expected output
 - Reference relevant skills with @ syntax
-- DRY, YAGNI, TDD, frequent commits
+- DRY, YAGNI, TDD

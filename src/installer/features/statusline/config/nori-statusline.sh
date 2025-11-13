@@ -160,12 +160,36 @@ TIPS=(
     "Tip: Try using the webapp-testing skill to debug UI/UX failures"
 )
 
-# Select tip based on day of year + hour for gentle rotation
-DAY_OF_YEAR=$(date +%j)
-HOUR=$(date +%H)
-TIP_SEED=$((DAY_OF_YEAR * 24 + HOUR))
-TIP_INDEX=$((TIP_SEED % ${#TIPS[@]}))
-SELECTED_TIP="${TIPS[$TIP_INDEX]}"
+# Check for install-in-progress marker
+INSTALL_MARKER="$HOME/.nori-install-in-progress"
+if [ -f "$INSTALL_MARKER" ]; then
+    # Install failed - read version from marker
+    FAILED_VERSION=$(cat "$INSTALL_MARKER" 2>/dev/null || echo "unknown")
+
+    # Check if marker is stale (>24 hours old)
+    if [ "$(uname)" = "Darwin" ]; then
+        # macOS date format
+        MARKER_AGE_HOURS=$(( ($(date +%s) - $(stat -f %m "$INSTALL_MARKER")) / 3600 ))
+    else
+        # Linux date format
+        MARKER_AGE_HOURS=$(( ($(date +%s) - $(stat -c %Y "$INSTALL_MARKER")) / 3600 ))
+    fi
+
+    if [ "$MARKER_AGE_HOURS" -gt 24 ]; then
+        INSTALL_MESSAGE="⚠️  Nori install v${FAILED_VERSION} did not complete (marker is ${MARKER_AGE_HOURS}h old). Check ~/.nori-notifications.log or remove marker: rm ~/.nori-install-in-progress"
+    else
+        INSTALL_MESSAGE="⚠️  Nori install v${FAILED_VERSION} did not complete. Check ~/.nori-notifications.log for details."
+    fi
+    STATUS_TIP="${INSTALL_MESSAGE}"
+else
+    # No install issues - show rotating tip
+    DAY_OF_YEAR=$(date +%j)
+    HOUR=$(date +%H)
+    TIP_SEED=$((DAY_OF_YEAR * 24 + HOUR))
+    TIP_INDEX=$((TIP_SEED % ${#TIPS[@]}))
+    SELECTED_TIP="${TIPS[$TIP_INDEX]}"
+    STATUS_TIP="${DIM_WHITE}${SELECTED_TIP}${NC}"
+fi
 
 # Build status line with colors - split into three lines
 # Line 1: Main metrics (git, [profile if set], cost, tokens, context, lines)
@@ -176,5 +200,5 @@ else
 fi
 # Line 2: Branding
 echo -e "${BRANDING}"
-# Line 3: Rotating tip
-echo -e "${DIM_WHITE}${SELECTED_TIP}${NC}"
+# Line 3: Status message (rotating tip or install error)
+echo -e "${STATUS_TIP}"

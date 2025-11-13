@@ -7,7 +7,6 @@ node_modules/
 .nvmrc
 
 # Keep these for installation
-!install.sh
 !bin/
 !hooks/
 !build/

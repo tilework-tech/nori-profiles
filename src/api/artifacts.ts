@@ -7,6 +7,7 @@ export type ArtifactType =
   | 'webhook'
   | 'memory'
   | 'noridoc'
+  | 'premortem'
   | 'no-type';
 
 export type Artifact = {

@@ -44,6 +44,7 @@ digraph tdd_cycle {
 - Do not write tests that are just mocks.
 - Do not write tests that test implementation detail.
 - Do not write tests that just test data structure format.
+- Do not write tests that test types.
 - Focus on writing tests for integration boundaries.
 - Only unit test utilities. Production code must be end to end tested.
 

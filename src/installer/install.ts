@@ -7,6 +7,7 @@
  */
 
 import { execSync } from 'child_process';
+import { writeFileSync, unlinkSync, existsSync } from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -404,6 +405,16 @@ export const main = async (args?: {
       },
     });
 
+    // Create install-in-progress marker file for statusline tracking
+    const currentVersion = getCurrentPackageVersion();
+    if (currentVersion) {
+      const markerPath = path.join(
+        process.env.HOME || '~',
+        '.nori-install-in-progress',
+      );
+      writeFileSync(markerPath, currentVersion, 'utf-8');
+    }
+
     // Save disk config if needed
     if (diskConfigToSave != null) {
       await saveDiskConfig({
@@ -433,9 +444,18 @@ export const main = async (args?: {
     console.log();
 
     // Save installed version
-    const currentVersion = getCurrentPackageVersion();
-    if (currentVersion) {
-      saveInstalledVersion({ version: currentVersion });
+    const finalVersion = getCurrentPackageVersion();
+    if (finalVersion) {
+      saveInstalledVersion({ version: finalVersion });
+    }
+
+    // Delete install-in-progress marker on successful completion
+    const markerPath = path.join(
+      process.env.HOME || '~',
+      '.nori-install-in-progress',
+    );
+    if (existsSync(markerPath)) {
+      unlinkSync(markerPath);
     }
 
     // Track installation completion

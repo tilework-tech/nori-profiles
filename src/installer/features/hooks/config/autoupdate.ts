@@ -8,18 +8,15 @@
  */
 
 import { execSync, spawn } from 'child_process';
+import { appendFileSync, createWriteStream } from 'fs';
+import { join } from 'path';
 
 import { trackEvent } from '@/installer/analytics.js';
 import { loadDiskConfig } from '@/installer/config.js';
 import { error } from '@/installer/logger.js';
+import { getInstalledVersion } from '@/installer/version.js';
 
 const PACKAGE_NAME = 'nori-ai';
-
-/**
- * Package version injected at build time by esbuild
- * See: plugin/src/scripts/bundle-skills.ts
- */
-declare const __PACKAGE_VERSION__: string;
 
 /**
  * Get the latest version from npm registry
@@ -45,14 +42,22 @@ const getLatestVersion = async (): Promise<string | null> => {
 const installUpdate = (args: { version: string }): void => {
   const { version } = args;
 
-  // Spawn background process for installation
+  // Log to notifications file
+  const logPath = join(process.env.HOME || '~', '.nori-notifications.log');
+  const logHeader = `\n=== Nori Autoupdate: ${new Date().toISOString()} ===\nInstalling v${version}...\nCommand: npx nori-ai@${version} install --non-interactive\n`;
+  appendFileSync(logPath, logHeader);
+
+  // Create log stream for background process output
+  const logStream = createWriteStream(logPath, { flags: 'a' });
+
+  // Spawn background process with output redirected to log
   // Use npx to install the new version AND run the install script non-interactively
   const child = spawn(
     'npx',
     [`${PACKAGE_NAME}@${version}`, 'install', '--non-interactive'],
     {
       detached: true,
-      stdio: 'ignore',
+      stdio: ['ignore', logStream, logStream],
     },
   );
 
@@ -79,8 +84,9 @@ const logToClaudeSession = (args: { message: string }): void => {
  */
 const main = async (): Promise<void> => {
   try {
-    // Get installed version from build-time injection
-    const installedVersion = __PACKAGE_VERSION__;
+    // Get installed version from file (not build constant) to ensure
+    // we retry if previous install failed
+    const installedVersion = getInstalledVersion();
 
     // Load disk config to determine install_type
     const diskConfig = await loadDiskConfig();
