@@ -89,6 +89,9 @@ Path: [Path to the folder from the repository root. Always start with @. For
 Created and maintained by Nori.
 ```
 
+Noridocs should NOT list files, maintain counts, or track line numbers. These
+are brittle documentation patterns that will break very quickly.
+
 ## Common Mistakes
 
 **Providing vague context**

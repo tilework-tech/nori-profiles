@@ -141,6 +141,7 @@ The endpoints directory contains 22 endpoints for the server.
 - Add Markdown tables whenever you need to depict tabular data.
 - Add ascii graphics whenever you need to depict integration points and system architecture.
 - Use codeblocks where needed.
+- Do NOT include line numbers. This is extremely brittle documentation.
 
 ## What NOT to Do
 
