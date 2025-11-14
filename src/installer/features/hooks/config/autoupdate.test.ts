@@ -16,6 +16,8 @@ vi.mock('child_process', () => ({
 vi.mock('fs', () => ({
   appendFileSync: vi.fn(),
   createWriteStream: vi.fn(),
+  openSync: vi.fn(),
+  closeSync: vi.fn(),
 }));
 
 // Mock logger to suppress output
@@ -71,11 +73,10 @@ describe('autoupdate', () => {
     });
 
     it('should trigger installation when new version is available', async () => {
-      // Mock createWriteStream for logging
-      const mockStream = { write: vi.fn(), end: vi.fn(), on: vi.fn() };
-      const { createWriteStream } = await import('fs');
-      const mockCreateWriteStream = vi.mocked(createWriteStream);
-      mockCreateWriteStream.mockReturnValue(mockStream as any);
+      // Mock openSync to return fake file descriptor
+      const { openSync } = await import('fs');
+      const mockOpenSync = vi.mocked(openSync);
+      mockOpenSync.mockReturnValue(3 as any);
 
       // Mock getInstalledVersion to return current version
       const { getInstalledVersion } = await import('@/installer/version.js');
@@ -90,6 +91,7 @@ describe('autoupdate', () => {
       const mockSpawn = vi.mocked(spawn);
       const mockChild = {
         unref: vi.fn(),
+        on: vi.fn(),
       };
       mockSpawn.mockReturnValue(mockChild as any);
 
@@ -126,7 +128,7 @@ describe('autoupdate', () => {
         ['nori-ai@14.2.0', 'install', '--non-interactive'],
         {
           detached: true,
-          stdio: ['ignore', mockStream, mockStream],
+          stdio: ['ignore', 3, 3],
         },
       );
 
@@ -409,11 +411,10 @@ describe('autoupdate', () => {
       // Expected: Autoupdate should trigger for 14.3.6 (file version vs npm)
       // not compare 14.3.6 vs 14.3.6 (build constant vs npm)
 
-      // Mock createWriteStream for logging
-      const mockStream = { write: vi.fn(), end: vi.fn(), on: vi.fn() };
-      const { createWriteStream } = await import('fs');
-      const mockCreateWriteStream = vi.mocked(createWriteStream);
-      mockCreateWriteStream.mockReturnValue(mockStream as any);
+      // Mock openSync to return fake file descriptor
+      const { openSync } = await import('fs');
+      const mockOpenSync = vi.mocked(openSync);
+      mockOpenSync.mockReturnValue(3 as any);
 
       // Mock getInstalledVersion to return old version from file
       const { getInstalledVersion } = await import('@/installer/version.js');
@@ -428,6 +429,7 @@ describe('autoupdate', () => {
       const mockSpawn = vi.mocked(spawn);
       const mockChild = {
         unref: vi.fn(),
+        on: vi.fn(),
       };
       mockSpawn.mockReturnValue(mockChild as any);
 
@@ -461,7 +463,7 @@ describe('autoupdate', () => {
         ['nori-ai@14.3.6', 'install', '--non-interactive'],
         {
           detached: true,
-          stdio: ['ignore', mockStream, mockStream],
+          stdio: ['ignore', 3, 3],
         },
       );
 
@@ -478,18 +480,11 @@ describe('autoupdate', () => {
       // This test verifies that background install output is logged to
       // ~/.nori-notifications.log for debugging
 
-      // Create a mock write stream
-      const mockStream = {
-        write: vi.fn(),
-        end: vi.fn(),
-        on: vi.fn(),
-      };
-
       // Mock filesystem functions
-      const { appendFileSync, createWriteStream } = await import('fs');
+      const { appendFileSync, openSync } = await import('fs');
       const mockAppendFileSync = vi.mocked(appendFileSync);
-      const mockCreateWriteStream = vi.mocked(createWriteStream);
-      mockCreateWriteStream.mockReturnValue(mockStream as any);
+      const mockOpenSync = vi.mocked(openSync);
+      mockOpenSync.mockReturnValue(3 as any);
 
       // Mock getInstalledVersion
       const { getInstalledVersion } = await import('@/installer/version.js');
@@ -504,6 +499,7 @@ describe('autoupdate', () => {
       const mockSpawn = vi.mocked(spawn);
       const mockChild = {
         unref: vi.fn(),
+        on: vi.fn(),
       };
       mockSpawn.mockReturnValue(mockChild as any);
 
@@ -542,19 +538,80 @@ describe('autoupdate', () => {
         'npx nori-ai@14.3.6 install --non-interactive',
       );
 
-      // Verify createWriteStream was called for append mode
-      expect(mockCreateWriteStream).toHaveBeenCalledWith(
+      // Verify openSync was called for append mode
+      expect(mockOpenSync).toHaveBeenCalledWith(
         expect.stringContaining('.nori-notifications.log'),
-        { flags: 'a' },
+        'a',
       );
 
-      // Verify spawn was called with stdio redirected to log stream
+      // Verify spawn was called with stdio redirected to log file descriptor
       expect(mockSpawn).toHaveBeenCalledWith(
         'npx',
         ['nori-ai@14.3.6', 'install', '--non-interactive'],
         {
           detached: true,
-          stdio: ['ignore', mockStream, mockStream],
+          stdio: ['ignore', 3, 3],
+        },
+      );
+
+      consoleLogSpy.mockRestore();
+    });
+
+    it('should use openSync for file descriptor instead of createWriteStream', async () => {
+      // Mock openSync to return fake file descriptor
+      const { openSync } = await import('fs');
+      const mockOpenSync = vi.mocked(openSync);
+      mockOpenSync.mockReturnValue(3 as any);
+
+      // Mock getInstalledVersion
+      const { getInstalledVersion } = await import('@/installer/version.js');
+      const mockGetInstalledVersion = vi.mocked(getInstalledVersion);
+      mockGetInstalledVersion.mockReturnValue('14.0.0');
+
+      // Mock execSync to return newer version
+      const mockExecSync = vi.mocked(execSync);
+      mockExecSync.mockReturnValue('14.3.6\n');
+
+      // Mock spawn
+      const mockSpawn = vi.mocked(spawn);
+      const mockChild = {
+        unref: vi.fn(),
+        on: vi.fn(),
+      };
+      mockSpawn.mockReturnValue(mockChild as any);
+
+      // Mock loadDiskConfig
+      const { loadDiskConfig } = await import('@/installer/config.js');
+      const mockLoadDiskConfig = vi.mocked(loadDiskConfig);
+      mockLoadDiskConfig.mockResolvedValue(null);
+
+      // Mock trackEvent
+      const { trackEvent } = await import('@/installer/analytics.js');
+      const mockTrackEvent = vi.mocked(trackEvent);
+      mockTrackEvent.mockResolvedValue();
+
+      // Spy on console.log
+      const consoleLogSpy = vi
+        .spyOn(console, 'log')
+        .mockImplementation(() => undefined);
+
+      // Import and run main function
+      const autoupdate = await import('./autoupdate.js');
+      await autoupdate.main();
+
+      // Verify openSync was called with append flag
+      expect(mockOpenSync).toHaveBeenCalledWith(
+        expect.stringContaining('.nori-notifications.log'),
+        'a',
+      );
+
+      // Verify spawn was called with file descriptor, not stream
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'npx',
+        ['nori-ai@14.3.6', 'install', '--non-interactive'],
+        {
+          detached: true,
+          stdio: ['ignore', 3, 3],
         },
       );
 

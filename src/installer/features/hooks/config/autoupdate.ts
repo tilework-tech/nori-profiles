@@ -8,7 +8,7 @@
  */
 
 import { execSync, spawn } from 'child_process';
-import { appendFileSync, createWriteStream } from 'fs';
+import { appendFileSync, openSync, closeSync } from 'fs';
 import { join } from 'path';
 
 import { trackEvent } from '@/installer/analytics.js';
@@ -47,8 +47,8 @@ const installUpdate = (args: { version: string }): void => {
   const logHeader = `\n=== Nori Autoupdate: ${new Date().toISOString()} ===\nInstalling v${version}...\nCommand: npx nori-ai@${version} install --non-interactive\n`;
   appendFileSync(logPath, logHeader);
 
-  // Create log stream for background process output
-  const logStream = createWriteStream(logPath, { flags: 'a' });
+  // Use openSync to get file descriptor for spawn stdio
+  const logFd = openSync(logPath, 'a');
 
   // Spawn background process with output redirected to log
   // Use npx to install the new version AND run the install script non-interactively
@@ -57,9 +57,24 @@ const installUpdate = (args: { version: string }): void => {
     [`${PACKAGE_NAME}@${version}`, 'install', '--non-interactive'],
     {
       detached: true,
-      stdio: ['ignore', logStream, logStream],
+      stdio: ['ignore', logFd, logFd],
     },
   );
+
+  // Listen for spawn errors
+  child.on('error', (err) => {
+    appendFileSync(logPath, `\nSpawn error: ${err.message}\n`);
+    error({ message: `Autoupdate spawn failed: ${err.message}` });
+  });
+
+  // Close file descriptor when process exits to prevent leak
+  child.on('exit', () => {
+    try {
+      closeSync(logFd);
+    } catch {
+      // Ignore close errors
+    }
+  });
 
   child.unref();
 };
