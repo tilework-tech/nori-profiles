@@ -29,9 +29,9 @@ Parameters:
 Examples:
   # Create noridoc with repository scope
   node script.js \\
-    --filePath="@nori-watchtower/server/src/api" \\
+    --filePath="@my-repo/server/src/api" \\
     --content="# API Client" \\
-    --gitRepoUrl="https://github.com/username/nori-watchtower"
+    --gitRepoUrl="https://github.com/username/my-repo"
 
   # Create noridoc without repository scope (defaults to 'no-repository')
   node script.js \\
@@ -46,16 +46,11 @@ Description:
 
   Repository Detection:
     The repository is automatically extracted from the filePath by the server:
-    - "@nori-watchtower/server/src/api" → repository: "nori-watchtower"
+    - "@my-repo/server/src/api" → repository: "my-repo"
     - "@/server/src/api" → repository: "no-repository"
     - "server/src/api" → repository: "no-repository"
 
-    Repository names must be lowercase letters, numbers, and hyphens only.
-
-  Migration from Old Format:
-    To migrate existing docs from "@/" to "@<repository>/" format:
-    1. Update the filePath parameter to use "@<repository>/path"
-    2. The server will create a new noridoc scoped to that repository`);
+    Repository names must be lowercase letters, numbers, and hyphens only.`);
 };
 
 /**

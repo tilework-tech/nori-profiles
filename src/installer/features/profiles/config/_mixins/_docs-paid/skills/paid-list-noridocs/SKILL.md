@@ -24,8 +24,8 @@ node ~/.claude/skills/list-noridocs/script.js [--repository="repo-name"] [--path
 
 ## Parameters
 
-- `--repository` (optional): Filter by repository name (e.g., "nori-watchtower", "no-repository")
-- `--pathPrefix` (optional): Filter by prefix like "@/server" or "@nori-watchtower/server"
+- `--repository` (optional): Filter by repository name (e.g., "my-repo", "no-repository")
+- `--pathPrefix` (optional): Filter by prefix like "@/server" or "@my-repo/server"
 - `--limit` (optional): Maximum results (default: 100)
 
 ## Examples
@@ -34,17 +34,17 @@ node ~/.claude/skills/list-noridocs/script.js [--repository="repo-name"] [--path
 # List all noridocs
 node ~/.claude/skills/list-noridocs/script.js
 
-# List noridocs in nori-watchtower repository
-node ~/.claude/skills/list-noridocs/script.js --repository="nori-watchtower"
+# List noridocs in my-repo repository
+node ~/.claude/skills/list-noridocs/script.js --repository="my-repo"
 
 # List noridocs under server directory (any repository)
 node ~/.claude/skills/list-noridocs/script.js --pathPrefix="@/server"
 
 # Combine repository and path filtering
-node ~/.claude/skills/list-noridocs/script.js --repository="nori-watchtower" --pathPrefix="@nori-watchtower/server"
+node ~/.claude/skills/list-noridocs/script.js --repository="my-repo" --pathPrefix="@my-repo/server"
 
 # List with custom limit
-node ~/.claude/skills/list-noridocs/script.js --repository="nori-watchtower" --limit=50
+node ~/.claude/skills/list-noridocs/script.js --repository="my-repo" --limit=50
 ```
 
 ## Repository Filtering

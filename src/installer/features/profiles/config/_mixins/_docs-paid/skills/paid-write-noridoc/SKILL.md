@@ -28,7 +28,7 @@ node ~/.claude/skills/write-noridoc/script.js --filePath="@<repository>/path" --
 
 ## Parameters
 
-- `--filePath` (required): Path in format `@<repository>/<path>` (e.g., `@nori-watchtower/server/src/persistence`)
+- `--filePath` (required): Path in format `@<repository>/<path>` (e.g., `@my-repo/server/src/persistence`)
   - Use `@<repository>/path` for repository-scoped docs
   - Use `@/path` or plain paths for `no-repository` scope (backward compatible)
 - `--content` (required): Markdown content
@@ -38,7 +38,7 @@ node ~/.claude/skills/write-noridoc/script.js --filePath="@<repository>/path" --
 
 The repository is automatically extracted from the filePath by the server:
 
-- `@nori-watchtower/server/src/api` → repository: `nori-watchtower`
+- `@my-repo/server/src/api` → repository: `my-repo`
 - `@/server/src/api` → repository: `no-repository`
 - `server/src/api` → repository: `no-repository`
 
@@ -50,11 +50,11 @@ Repository names must be **lowercase letters, numbers, and hyphens** only.
 
 ```bash
 node ~/.claude/skills/write-noridoc/script.js \
-  --filePath="@nori-watchtower/server/src/api" \
+  --filePath="@my-repo/server/src/api" \
   --content="# API Client
 
 Provides access to Nori backend." \
-  --gitRepoUrl="https://github.com/username/nori-watchtower"
+  --gitRepoUrl="https://github.com/username/my-repo"
 ```
 
 ### Create noridoc without repository scope
@@ -64,14 +64,6 @@ node ~/.claude/skills/write-noridoc/script.js \
   --filePath="@/server/src/api" \
   --content="# API Client"
 ```
-
-## Migration from Old Format
-
-To migrate existing docs from `@/` to `@<repository>/` format:
-
-1. Update filePath to use `@<repository>/path` format
-2. The server will create a new noridoc scoped to that repository
-3. Old `@/` docs will remain in the `no-repository` scope
 
 ## Output
 

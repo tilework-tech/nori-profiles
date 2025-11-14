@@ -21,25 +21,25 @@ const showUsage = (): void => {
   console.error(`Usage: node script.js [--pathPrefix="@/path"] [--repository="repo-name"] [--limit=100]
 
 Parameters:
-  --pathPrefix  (optional) Filter by prefix like "@/server" or "@nori-watchtower/server"
-  --repository  (optional) Filter by repository name (e.g., "nori-watchtower", "no-repository")
+  --pathPrefix  (optional) Filter by prefix like "@/server" or "@my-repo/server"
+  --repository  (optional) Filter by repository name (e.g., "my-repo", "no-repository")
   --limit       (optional) Maximum results (default: 100)
 
 Examples:
   # List all noridocs
   node script.js
 
-  # List noridocs in nori-watchtower repository
-  node script.js --repository="nori-watchtower"
+  # List noridocs in my-repo repository
+  node script.js --repository="my-repo"
 
   # List noridocs under server directory
   node script.js --pathPrefix="@/server"
 
   # Combine repository and path filtering
-  node script.js --repository="nori-watchtower" --pathPrefix="@nori-watchtower/server"
+  node script.js --repository="my-repo" --pathPrefix="@my-repo/server"
 
   # List with custom limit
-  node script.js --repository="nori-watchtower" --limit=50
+  node script.js --repository="my-repo" --limit=50
 
 Description:
   Lists all noridocs, optionally filtered by repository and/or path prefix.

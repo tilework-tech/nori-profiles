@@ -28,7 +28,7 @@ node ~/.claude/skills/read-noridoc/script.js --filePath="@<repository>/path"
 
 ## Parameters
 
-- `--filePath` (required): Path in format `@<repository>/<path>` (e.g., "@nori-watchtower/server/src/persistence")
+- `--filePath` (required): Path in format `@<repository>/<path>` (e.g., "@my-repo/server/src/persistence")
   - Use `@<repository>/path` for repository-scoped docs
   - Use `@/path` for docs in the `no-repository` scope (old format)
 
@@ -36,7 +36,7 @@ node ~/.claude/skills/read-noridoc/script.js --filePath="@<repository>/path"
 
 ```bash
 # Read repository-scoped noridoc
-node ~/.claude/skills/read-noridoc/script.js --filePath="@nori-watchtower/server/src/api"
+node ~/.claude/skills/read-noridoc/script.js --filePath="@my-repo/server/src/api"
 
 # Read doc from no-repository scope
 node ~/.claude/skills/read-noridoc/script.js --filePath="@/server/src/api"

@@ -57,33 +57,6 @@ Shows progress as each file is synced, with a summary at the end:
 - Configured credentials in `~/nori-config.json`
 - Local docs.md files with valid `Path:` headers
 
-## Repository Detection
-
-The repository is automatically extracted from each file's `Path:` field by the server:
-
-- `Path: @nori-watchtower/server/src/persistence` → repository: `nori-watchtower`
-- `Path: @/server/src/persistence` → repository: `no-repository`
-- `Path: server/src/persistence` → repository: `no-repository`
-
-Repository names must be **lowercase letters, numbers, and hyphens** only.
-
-## Migration from Old Format
-
-To migrate existing docs from `@/` to `@<repository>/` format:
-
-1. Update `Path:` fields in your docs.md files:
-   ```markdown
-   <!-- Before -->
-   Path: @/server/src/persistence
-
-   <!-- After -->
-   Path: @nori-watchtower/server/src/persistence
-   ```
-
-2. Run the sync command to update server-side noridocs with repository scope
-
-3. Old docs with `@/` paths will remain in the `no-repository` scope
-
 ## Notes
 
 - Uses `git ls-files` to find only Git-tracked docs.md files
