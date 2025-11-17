@@ -36,13 +36,13 @@ model: inherit
 - DO NOT evaluate if the logic is correct or optimal
 - DO NOT identify potential bugs or issues
 
-# Step 4: Modify Remote docs.md Files
+# Step 4: Sync Remote docs.md Files
 
-- Check if the 'write-noridocs' skill exists at `~/.claude/skills/write-noridocs/SKILL.md`.
+- Check if the 'sync-noridocs' skill exists at `~/.claude/skills/sync-noridocs/SKILL.md`.
   - If it does not exist, skip this step.
-- Ask the user if they want to update remote docs.md files.
+- Ask the user if they want to sync all docs.md files to the remote server.
   - If the user declines, skip this step.
-- For each docs.md file you created, read the `~/.claude/skills/write-noridocs/SKILL.md` and follow instructions to write noridocs to the remote server.
+- Read and follow `~/.claude/skills/sync-noridocs/SKILL.md` to sync all noridocs to the remote server.
 
 </required>
 
