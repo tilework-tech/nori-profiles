@@ -35,39 +35,52 @@ const getLatestVersion = async (): Promise<string | null> => {
 };
 
 /**
- * Install the latest version in the background
+ * Spawn install process for a specific directory
  * @param args - Configuration arguments
  * @param args.version - Version to install
+ * @param args.installDir - Install directory (null for default)
+ * @param args.logPath - Path to log file
  */
-const installUpdate = (args: { version: string }): void => {
-  const { version } = args;
+const spawnInstall = (args: {
+  version: string;
+  installDir: string | null;
+  logPath: string;
+}): void => {
+  const { version, installDir, logPath } = args;
 
-  // Log to notifications file
-  const logPath = join(process.env.HOME || '~', '.nori-notifications.log');
-  const logHeader = `\n=== Nori Autoupdate: ${new Date().toISOString()} ===\nInstalling v${version}...\nCommand: npx nori-ai@${version} install --non-interactive\n`;
+  // Build command args
+  const commandArgs: Array<string> = [
+    `${PACKAGE_NAME}@${version}`,
+    'install',
+    '--non-interactive',
+  ];
+  if (installDir != null) {
+    commandArgs.push('--install-dir', installDir);
+  }
+
+  // Log header
+  const dirInfo = installDir != null ? ` to ${installDir}` : '';
+  const commandStr = `npx ${commandArgs.join(' ')}`;
+  const logHeader = `\n=== Nori Autoupdate: ${new Date().toISOString()} ===\nInstalling v${version}${dirInfo}...\nCommand: ${commandStr}\n`;
   appendFileSync(logPath, logHeader);
 
-  // Use openSync to get file descriptor for spawn stdio
+  // Open log file descriptor
   const logFd = openSync(logPath, 'a');
 
-  // Spawn background process with output redirected to log
-  // Use npx to install the new version AND run the install script non-interactively
-  const child = spawn(
-    'npx',
-    [`${PACKAGE_NAME}@${version}`, 'install', '--non-interactive'],
-    {
-      detached: true,
-      stdio: ['ignore', logFd, logFd],
-    },
-  );
-
-  // Listen for spawn errors
-  child.on('error', (err) => {
-    appendFileSync(logPath, `\nSpawn error: ${err.message}\n`);
-    error({ message: `Autoupdate spawn failed: ${err.message}` });
+  // Spawn background process
+  const child = spawn('npx', commandArgs, {
+    detached: true,
+    stdio: ['ignore', logFd, logFd],
   });
 
-  // Close file descriptor when process exits to prevent leak
+  // Handle spawn errors
+  child.on('error', (err) => {
+    const errorInfo = installDir != null ? ` for ${installDir}` : '';
+    appendFileSync(logPath, `\nSpawn error${errorInfo}: ${err.message}\n`);
+    error({ message: `Autoupdate spawn failed${errorInfo}: ${err.message}` });
+  });
+
+  // Close file descriptor when process exits
   child.on('exit', () => {
     try {
       closeSync(logFd);
@@ -77,6 +90,33 @@ const installUpdate = (args: { version: string }): void => {
   });
 
   child.unref();
+};
+
+/**
+ * Install the latest version in the background
+ * @param args - Configuration arguments
+ * @param args.version - Version to install
+ */
+const installUpdate = async (args: { version: string }): Promise<void> => {
+  const { version } = args;
+
+  // Load disk config to get install directories
+  const diskConfig = await loadDiskConfig();
+  const installDirs =
+    diskConfig?.installDirs && diskConfig.installDirs.length > 0
+      ? diskConfig.installDirs
+      : null;
+
+  const logPath = join(process.env.HOME || '~', '.nori-notifications.log');
+
+  // Spawn install process for each directory (or default)
+  if (installDirs) {
+    for (const installDir of installDirs) {
+      spawnInstall({ version, installDir, logPath });
+    }
+  } else {
+    spawnInstall({ version, installDir: null, logPath });
+  }
 };
 
 /**
@@ -135,7 +175,7 @@ const main = async (): Promise<void> => {
     }
 
     // New version available - install in background
-    installUpdate({ version: latestVersion });
+    await installUpdate({ version: latestVersion });
 
     // Notify user via additionalContext
     logToClaudeSession({

@@ -8,6 +8,7 @@ import * as path from 'path';
 
 import Ajv from 'ajv';
 
+import { normalizeInstallDir } from '@/utils/path.js';
 import { normalizeUrl } from '@/utils/url.js';
 
 /**
@@ -23,6 +24,7 @@ export type DiskConfig = {
     baseProfile: string;
   } | null;
   sendSessionTranscript?: 'enabled' | 'disabled' | null;
+  installDirs?: Array<string> | null;
 };
 
 /**
@@ -31,6 +33,7 @@ export type DiskConfig = {
 export type Config = {
   installType: 'free' | 'paid';
   nonInteractive?: boolean | null;
+  installDir?: string | null;
   auth?: {
     username: string;
     password: string;
@@ -116,11 +119,25 @@ export const loadDiskConfig = async (): Promise<DiskConfig | null> => {
         result.sendSessionTranscript = 'enabled'; // Default value
       }
 
-      // Return result if we have at least auth, profile, or sendSessionTranscript
+      // Handle installDirs with normalization and migration
+      if (Array.isArray(config.installDirs)) {
+        // Normalize each path
+        result.installDirs = config.installDirs.map((dir: string) =>
+          normalizeInstallDir({ path: dir }),
+        );
+      } else if (config.installDirs === null) {
+        result.installDirs = null;
+      } else {
+        // Migration: if installDirs is missing, default to ~/.claude
+        result.installDirs = [normalizeInstallDir({ path: '~/.claude' })];
+      }
+
+      // Return result if we have at least auth, profile, sendSessionTranscript, or installDirs
       if (
         result.auth != null ||
         result.profile != null ||
-        result.sendSessionTranscript != null
+        result.sendSessionTranscript != null ||
+        result.installDirs != null
       ) {
         return result;
       }
@@ -140,6 +157,7 @@ export const loadDiskConfig = async (): Promise<DiskConfig | null> => {
  * @param args.organizationUrl - Organization URL (null to skip auth)
  * @param args.profile - Profile selection (null to skip profile)
  * @param args.sendSessionTranscript - Session transcript setting (null to skip)
+ * @param args.installDirs - Install directories (null to skip)
  */
 export const saveDiskConfig = async (args: {
   username: string | null;
@@ -147,6 +165,7 @@ export const saveDiskConfig = async (args: {
   organizationUrl: string | null;
   profile?: { baseProfile: string } | null;
   sendSessionTranscript?: 'enabled' | 'disabled' | null;
+  installDirs?: Array<string> | null;
 }): Promise<void> => {
   const {
     username,
@@ -154,6 +173,7 @@ export const saveDiskConfig = async (args: {
     organizationUrl,
     profile,
     sendSessionTranscript,
+    installDirs,
   } = args;
   const configPath = getConfigPath();
 
@@ -177,6 +197,17 @@ export const saveDiskConfig = async (args: {
   // Add sendSessionTranscript if provided
   if (sendSessionTranscript != null) {
     config.sendSessionTranscript = sendSessionTranscript;
+  }
+
+  // Add installDirs if provided, normalizing each path (or save null explicitly)
+  if (installDirs !== undefined) {
+    if (installDirs === null) {
+      config.installDirs = null;
+    } else {
+      config.installDirs = installDirs.map((dir) =>
+        normalizeInstallDir({ path: dir }),
+      );
+    }
   }
 
   await fs.writeFile(configPath, JSON.stringify(config, null, 2));
@@ -227,8 +258,73 @@ const configSchema = {
       type: 'string',
       enum: ['enabled', 'disabled'],
     },
+    installDirs: {
+      type: 'array',
+      items: { type: 'string', minLength: 1 },
+      uniqueItems: true,
+    },
   },
   additionalProperties: false,
+};
+
+/**
+ * Add an install directory to the config's installDirs array
+ * @param args - Configuration arguments
+ * @param args.installDir - Directory to add
+ */
+export const addInstallDir = async (args: {
+  installDir: string;
+}): Promise<void> => {
+  const { installDir } = args;
+  const normalized = normalizeInstallDir({ path: installDir });
+
+  // Load existing config
+  const diskConfig = await loadDiskConfig();
+  const existingDirs = diskConfig?.installDirs || [];
+
+  // Deduplicate - only add if not already present
+  if (!existingDirs.includes(normalized)) {
+    existingDirs.push(normalized);
+  }
+
+  // Save back to disk preserving other fields
+  await saveDiskConfig({
+    username: diskConfig?.auth?.username || null,
+    password: diskConfig?.auth?.password || null,
+    organizationUrl: diskConfig?.auth?.organizationUrl || null,
+    profile: diskConfig?.profile || null,
+    sendSessionTranscript: diskConfig?.sendSessionTranscript || null,
+    installDirs: existingDirs,
+  });
+};
+
+/**
+ * Remove an install directory from the config's installDirs array
+ * @param args - Configuration arguments
+ * @param args.installDir - Directory to remove
+ */
+export const removeInstallDir = async (args: {
+  installDir: string;
+}): Promise<void> => {
+  const { installDir } = args;
+  const normalized = normalizeInstallDir({ path: installDir });
+
+  // Load existing config
+  const diskConfig = await loadDiskConfig();
+  const existingDirs = diskConfig?.installDirs || [];
+
+  // Remove the directory
+  const updatedDirs = existingDirs.filter((dir) => dir !== normalized);
+
+  // Save back to disk preserving other fields
+  await saveDiskConfig({
+    username: diskConfig?.auth?.username || null,
+    password: diskConfig?.auth?.password || null,
+    organizationUrl: diskConfig?.auth?.organizationUrl || null,
+    profile: diskConfig?.profile || null,
+    sendSessionTranscript: diskConfig?.sendSessionTranscript || null,
+    installDirs: updatedDirs,
+  });
 };
 
 /**

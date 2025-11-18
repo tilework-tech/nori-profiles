@@ -616,5 +616,265 @@ describe('autoupdate', () => {
 
       consoleLogSpy.mockRestore();
     });
+
+    it('should spawn once for single directory in config', async () => {
+      // Mock openSync to return fake file descriptor
+      const { openSync } = await import('fs');
+      const mockOpenSync = vi.mocked(openSync);
+      mockOpenSync.mockReturnValue(3 as any);
+
+      // Mock getInstalledVersion
+      const { getInstalledVersion } = await import('@/installer/version.js');
+      const mockGetInstalledVersion = vi.mocked(getInstalledVersion);
+      mockGetInstalledVersion.mockReturnValue('14.0.0');
+
+      // Mock execSync to return newer version
+      const mockExecSync = vi.mocked(execSync);
+      mockExecSync.mockReturnValue('14.2.0\n');
+
+      // Mock spawn
+      const mockSpawn = vi.mocked(spawn);
+      const mockChild = {
+        unref: vi.fn(),
+        on: vi.fn(),
+      };
+      mockSpawn.mockReturnValue(mockChild as any);
+
+      // Mock loadDiskConfig to return single directory
+      const { loadDiskConfig } = await import('@/installer/config.js');
+      const mockLoadDiskConfig = vi.mocked(loadDiskConfig);
+      mockLoadDiskConfig.mockResolvedValue({
+        installDirs: ['/custom/dir'],
+      });
+
+      // Mock trackEvent
+      const { trackEvent } = await import('@/installer/analytics.js');
+      const mockTrackEvent = vi.mocked(trackEvent);
+      mockTrackEvent.mockResolvedValue();
+
+      // Spy on console.log
+      const consoleLogSpy = vi
+        .spyOn(console, 'log')
+        .mockImplementation(() => undefined);
+
+      // Import and run main function
+      const autoupdate = await import('./autoupdate.js');
+      await autoupdate.main();
+
+      // Verify spawn was called once with --install-dir parameter
+      expect(mockSpawn).toHaveBeenCalledTimes(1);
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'npx',
+        [
+          'nori-ai@14.2.0',
+          'install',
+          '--non-interactive',
+          '--install-dir',
+          '/custom/dir',
+        ],
+        {
+          detached: true,
+          stdio: ['ignore', 3, 3],
+        },
+      );
+
+      consoleLogSpy.mockRestore();
+    });
+
+    it('should spawn multiple times for multiple directories', async () => {
+      // Mock openSync to return different file descriptors for each spawn
+      const { openSync } = await import('fs');
+      const mockOpenSync = vi.mocked(openSync);
+      mockOpenSync
+        .mockReturnValueOnce(3 as any)
+        .mockReturnValueOnce(4 as any)
+        .mockReturnValueOnce(5 as any);
+
+      // Mock getInstalledVersion
+      const { getInstalledVersion } = await import('@/installer/version.js');
+      const mockGetInstalledVersion = vi.mocked(getInstalledVersion);
+      mockGetInstalledVersion.mockReturnValue('14.0.0');
+
+      // Mock execSync to return newer version
+      const mockExecSync = vi.mocked(execSync);
+      mockExecSync.mockReturnValue('14.2.0\n');
+
+      // Mock spawn
+      const mockSpawn = vi.mocked(spawn);
+      const mockChild = {
+        unref: vi.fn(),
+        on: vi.fn(),
+      };
+      mockSpawn.mockReturnValue(mockChild as any);
+
+      // Mock loadDiskConfig to return multiple directories
+      const { loadDiskConfig } = await import('@/installer/config.js');
+      const mockLoadDiskConfig = vi.mocked(loadDiskConfig);
+      mockLoadDiskConfig.mockResolvedValue({
+        installDirs: ['/dir1', '/dir2', '/dir3'],
+      });
+
+      // Mock trackEvent
+      const { trackEvent } = await import('@/installer/analytics.js');
+      const mockTrackEvent = vi.mocked(trackEvent);
+      mockTrackEvent.mockResolvedValue();
+
+      // Spy on console.log
+      const consoleLogSpy = vi
+        .spyOn(console, 'log')
+        .mockImplementation(() => undefined);
+
+      // Import and run main function
+      const autoupdate = await import('./autoupdate.js');
+      await autoupdate.main();
+
+      // Verify spawn was called 3 times with correct --install-dir parameters
+      expect(mockSpawn).toHaveBeenCalledTimes(3);
+      expect(mockSpawn).toHaveBeenNthCalledWith(
+        1,
+        'npx',
+        ['nori-ai@14.2.0', 'install', '--non-interactive', '--install-dir', '/dir1'],
+        {
+          detached: true,
+          stdio: ['ignore', 3, 3],
+        },
+      );
+      expect(mockSpawn).toHaveBeenNthCalledWith(
+        2,
+        'npx',
+        ['nori-ai@14.2.0', 'install', '--non-interactive', '--install-dir', '/dir2'],
+        {
+          detached: true,
+          stdio: ['ignore', 4, 4],
+        },
+      );
+      expect(mockSpawn).toHaveBeenNthCalledWith(
+        3,
+        'npx',
+        ['nori-ai@14.2.0', 'install', '--non-interactive', '--install-dir', '/dir3'],
+        {
+          detached: true,
+          stdio: ['ignore', 5, 5],
+        },
+      );
+
+      consoleLogSpy.mockRestore();
+    });
+
+    it('should use default directory when installDirs is null', async () => {
+      // Mock openSync to return fake file descriptor
+      const { openSync } = await import('fs');
+      const mockOpenSync = vi.mocked(openSync);
+      mockOpenSync.mockReturnValue(3 as any);
+
+      // Mock getInstalledVersion
+      const { getInstalledVersion } = await import('@/installer/version.js');
+      const mockGetInstalledVersion = vi.mocked(getInstalledVersion);
+      mockGetInstalledVersion.mockReturnValue('14.0.0');
+
+      // Mock execSync to return newer version
+      const mockExecSync = vi.mocked(execSync);
+      mockExecSync.mockReturnValue('14.2.0\n');
+
+      // Mock spawn
+      const mockSpawn = vi.mocked(spawn);
+      const mockChild = {
+        unref: vi.fn(),
+        on: vi.fn(),
+      };
+      mockSpawn.mockReturnValue(mockChild as any);
+
+      // Mock loadDiskConfig to return installDirs: null
+      const { loadDiskConfig } = await import('@/installer/config.js');
+      const mockLoadDiskConfig = vi.mocked(loadDiskConfig);
+      mockLoadDiskConfig.mockResolvedValue({
+        installDirs: null,
+      });
+
+      // Mock trackEvent
+      const { trackEvent } = await import('@/installer/analytics.js');
+      const mockTrackEvent = vi.mocked(trackEvent);
+      mockTrackEvent.mockResolvedValue();
+
+      // Spy on console.log
+      const consoleLogSpy = vi
+        .spyOn(console, 'log')
+        .mockImplementation(() => undefined);
+
+      // Import and run main function
+      const autoupdate = await import('./autoupdate.js');
+      await autoupdate.main();
+
+      // Verify spawn was called once without --install-dir (default behavior)
+      expect(mockSpawn).toHaveBeenCalledTimes(1);
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'npx',
+        ['nori-ai@14.2.0', 'install', '--non-interactive'],
+        {
+          detached: true,
+          stdio: ['ignore', 3, 3],
+        },
+      );
+
+      consoleLogSpy.mockRestore();
+    });
+
+    it('should use default directory when installDirs is empty array', async () => {
+      // Mock openSync to return fake file descriptor
+      const { openSync } = await import('fs');
+      const mockOpenSync = vi.mocked(openSync);
+      mockOpenSync.mockReturnValue(3 as any);
+
+      // Mock getInstalledVersion
+      const { getInstalledVersion } = await import('@/installer/version.js');
+      const mockGetInstalledVersion = vi.mocked(getInstalledVersion);
+      mockGetInstalledVersion.mockReturnValue('14.0.0');
+
+      // Mock execSync to return newer version
+      const mockExecSync = vi.mocked(execSync);
+      mockExecSync.mockReturnValue('14.2.0\n');
+
+      // Mock spawn
+      const mockSpawn = vi.mocked(spawn);
+      const mockChild = {
+        unref: vi.fn(),
+        on: vi.fn(),
+      };
+      mockSpawn.mockReturnValue(mockChild as any);
+
+      // Mock loadDiskConfig to return empty installDirs array
+      const { loadDiskConfig } = await import('@/installer/config.js');
+      const mockLoadDiskConfig = vi.mocked(loadDiskConfig);
+      mockLoadDiskConfig.mockResolvedValue({
+        installDirs: [],
+      });
+
+      // Mock trackEvent
+      const { trackEvent } = await import('@/installer/analytics.js');
+      const mockTrackEvent = vi.mocked(trackEvent);
+      mockTrackEvent.mockResolvedValue();
+
+      // Spy on console.log
+      const consoleLogSpy = vi
+        .spyOn(console, 'log')
+        .mockImplementation(() => undefined);
+
+      // Import and run main function
+      const autoupdate = await import('./autoupdate.js');
+      await autoupdate.main();
+
+      // Verify spawn was called once without --install-dir (default behavior)
+      expect(mockSpawn).toHaveBeenCalledTimes(1);
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'npx',
+        ['nori-ai@14.2.0', 'install', '--non-interactive'],
+        {
+          detached: true,
+          stdio: ['ignore', 3, 3],
+        },
+      );
+
+      consoleLogSpy.mockRestore();
+    });
   });
 });
