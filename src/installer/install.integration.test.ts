@@ -366,7 +366,31 @@ describe("install integration test", () => {
   it("should completely clean up all Nori files after uninstall", async () => {
     const CONFIG_PATH = getConfigPath();
 
-    // STEP 1: Install with paid config to get all features
+    // Helper to recursively get all files/dirs in a directory
+    const getDirectorySnapshot = (dir: string): Array<string> => {
+      const results: Array<string> = [];
+      if (!fs.existsSync(dir)) return results;
+
+      const walk = (currentPath: string) => {
+        const entries = fs.readdirSync(currentPath, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(currentPath, entry.name);
+          const relativePath = path.relative(dir, fullPath);
+          results.push(relativePath);
+          if (entry.isDirectory()) {
+            walk(fullPath);
+          }
+        }
+      };
+      walk(dir);
+      return results.sort();
+    };
+
+    // STEP 1: Snapshot state BEFORE install
+    const preInstallClaudeSnapshot = getDirectorySnapshot(TEST_CLAUDE_DIR);
+    const preInstallHomeSnapshot = getDirectorySnapshot(tempHomeDir);
+
+    // STEP 2: Install with paid config to get all features
     const paidConfig = {
       username: "test@example.com",
       password: "testpass",
@@ -379,86 +403,71 @@ describe("install integration test", () => {
 
     await installMain({ nonInteractive: true });
 
-    // STEP 2: Verify installation created expected directories and files
-    const agentsDir = path.join(TEST_CLAUDE_DIR, "agents");
-    const commandsDir = path.join(TEST_CLAUDE_DIR, "commands");
-    const profilesDir = path.join(TEST_CLAUDE_DIR, "profiles");
-    const skillsDir = path.join(TEST_CLAUDE_DIR, "skills");
-    const claudeMdFile = path.join(TEST_CLAUDE_DIR, "CLAUDE.md");
-    const settingsFile = path.join(TEST_CLAUDE_DIR, "settings.json");
+    // STEP 3: Verify installation actually created files
+    const postInstallClaudeSnapshot = getDirectorySnapshot(TEST_CLAUDE_DIR);
+    const postInstallHomeSnapshot = getDirectorySnapshot(tempHomeDir);
 
-    // Verify directories were created
-    expect(fs.existsSync(agentsDir)).toBe(true);
-    expect(fs.existsSync(commandsDir)).toBe(true);
-    expect(fs.existsSync(profilesDir)).toBe(true);
-    expect(fs.existsSync(skillsDir)).toBe(true);
-    expect(fs.existsSync(claudeMdFile)).toBe(true);
-    expect(fs.existsSync(settingsFile)).toBe(true);
+    // Installation should have added files
+    expect(postInstallClaudeSnapshot.length).toBeGreaterThan(
+      preInstallClaudeSnapshot.length,
+    );
+    expect(postInstallHomeSnapshot.length).toBeGreaterThan(
+      preInstallHomeSnapshot.length,
+    );
 
-    // Verify files exist in agents directory
-    const agentFiles = fs.readdirSync(agentsDir);
-    expect(agentFiles.length).toBeGreaterThan(0);
-    expect(agentFiles.some((f) => f.startsWith("nori-"))).toBe(true);
-
-    // Verify files exist in commands directory
-    const commandFiles = fs.readdirSync(commandsDir);
-    expect(commandFiles.length).toBeGreaterThan(0);
-
-    // Verify version file was created
-    expect(fs.existsSync(VERSION_FILE_PATH)).toBe(true);
+    // Verify some expected files exist (sanity check)
+    expect(postInstallClaudeSnapshot.some((f) => f.includes("agents"))).toBe(
+      true,
+    );
+    expect(postInstallClaudeSnapshot.some((f) => f.includes("commands"))).toBe(
+      true,
+    );
+    expect(postInstallClaudeSnapshot.some((f) => f.includes("profiles"))).toBe(
+      true,
+    );
+    expect(postInstallClaudeSnapshot.some((f) => f.includes("skills"))).toBe(
+      true,
+    );
 
     // Create notifications log to test cleanup
     const notificationsLog = path.join(tempHomeDir, ".nori-notifications.log");
     fs.writeFileSync(notificationsLog, "test notification log");
-    expect(fs.existsSync(notificationsLog)).toBe(true);
 
-    // STEP 3: Run uninstall with removeConfig=true (user-initiated uninstall)
+    // STEP 4: Run uninstall with removeConfig=true (user-initiated uninstall)
     await runUninstall({ removeConfig: true });
 
-    // STEP 4: Verify COMPLETE cleanup
+    // STEP 5: Snapshot state AFTER uninstall
+    const postUninstallClaudeSnapshot = getDirectorySnapshot(TEST_CLAUDE_DIR);
+    const postUninstallHomeSnapshot = getDirectorySnapshot(tempHomeDir);
 
-    // All Nori agent files should be removed
-    if (fs.existsSync(agentsDir)) {
-      const remainingAgents = fs.readdirSync(agentsDir);
-      const noriAgents = remainingAgents.filter((f) => f.startsWith("nori-"));
-      expect(noriAgents.length).toBe(0);
-    }
+    // STEP 6: Compare snapshots - state should match pre-install
+    // Note: settings.json may remain as it's a shared Claude Code file,
+    // but it should be empty or only contain schema after cleanup
+    const allowedRemnants = ["settings.json"];
+    const filteredPostUninstall = postUninstallClaudeSnapshot.filter(
+      (f) => !allowedRemnants.includes(f),
+    );
 
-    // All Nori command files should be removed
-    if (fs.existsSync(commandsDir)) {
-      const remainingCommands = fs.readdirSync(commandsDir);
-      const noriCommands = remainingCommands.filter((f) => f.endsWith(".md"));
-      expect(noriCommands.length).toBe(0);
-    }
+    // Claude directory should be back to pre-install state (except allowed remnants)
+    expect(filteredPostUninstall).toEqual(preInstallClaudeSnapshot);
 
-    // Empty directories should be removed
-    expect(fs.existsSync(agentsDir)).toBe(false);
-    expect(fs.existsSync(commandsDir)).toBe(false);
-    expect(fs.existsSync(profilesDir)).toBe(false);
-
-    // Skills directory should be removed
-    expect(fs.existsSync(skillsDir)).toBe(false);
-
-    // Notifications log should be removed
-    expect(fs.existsSync(notificationsLog)).toBe(false);
-
-    // Config file should be removed (removeConfig=true)
-    expect(fs.existsSync(CONFIG_PATH)).toBe(false);
-
-    // Version file should be removed
-    expect(fs.existsSync(VERSION_FILE_PATH)).toBe(false);
-
-    // CLAUDE.md should be removed or have no Nori content
-    // (in this test, the managed block removal would make it empty, so it gets deleted)
-    if (fs.existsSync(claudeMdFile)) {
-      const content = fs.readFileSync(claudeMdFile, "utf-8");
-      expect(content).not.toContain("NORI-AI MANAGED BLOCK");
-    }
-
-    // Settings.json may still exist but should not have Nori hooks
-    if (fs.existsSync(settingsFile)) {
-      const settings = JSON.parse(fs.readFileSync(settingsFile, "utf-8"));
+    // If settings.json remains, verify it has no Nori content
+    const settingsPath = path.join(TEST_CLAUDE_DIR, "settings.json");
+    if (fs.existsSync(settingsPath)) {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+      // Should not have hooks (removed by hooks loader)
       expect(settings.hooks).toBeUndefined();
+      // Should not have Nori-specific permissions
+      if (settings.permissions?.additionalDirectories) {
+        const noriDirs = settings.permissions.additionalDirectories.filter(
+          (d: string) => d.includes("skills") || d.includes("profiles"),
+        );
+        expect(noriDirs.length).toBe(0);
+      }
     }
+
+    // Home directory should be back to pre-install state
+    // (no config file, no version file, no notifications log)
+    expect(postUninstallHomeSnapshot).toEqual(preInstallHomeSnapshot);
   });
 });
