@@ -18,6 +18,14 @@ let mockClaudeDir: string;
 let mockClaudeCommandsDir: string;
 
 vi.mock("@/installer/env.js", () => ({
+  // New function exports
+  getClaudeDir: () => mockClaudeDir,
+  getClaudeSettingsFile: () => path.join(mockClaudeDir, "settings.json"),
+  getClaudeAgentsDir: () => path.join(mockClaudeDir, "agents"),
+  getClaudeCommandsDir: () => mockClaudeCommandsDir,
+  getClaudeMdFile: () => path.join(mockClaudeDir, "CLAUDE.md"),
+  getClaudeSkillsDir: () => path.join(mockClaudeDir, "skills"),
+  getClaudeProfilesDir: () => path.join(mockClaudeDir, "profiles"),
   get CLAUDE_DIR() {
     return mockClaudeDir;
   },

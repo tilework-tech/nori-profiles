@@ -8,6 +8,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 let testClaudeDir: string;
 
 vi.mock("@/installer/env.js", () => ({
+  // New function exports
+  getClaudeDir: () => testClaudeDir,
+  getClaudeSettingsFile: () => path.join(testClaudeDir, "settings.json"),
+  getClaudeAgentsDir: () => path.join(testClaudeDir, "agents"),
+  getClaudeCommandsDir: () => path.join(testClaudeDir, "commands"),
+  getClaudeMdFile: () => path.join(testClaudeDir, "CLAUDE.md"),
+  getClaudeSkillsDir: () => path.join(testClaudeDir, "skills"),
+  getClaudeProfilesDir: () => path.join(testClaudeDir, "profiles"),
   get CLAUDE_DIR() {
     return testClaudeDir;
   },
