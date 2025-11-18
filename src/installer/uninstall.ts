@@ -16,7 +16,11 @@ import {
   getConfigPath,
   type Config,
 } from "@/installer/config.js";
-import { CLAUDE_AGENTS_DIR, CLAUDE_COMMANDS_DIR } from "@/installer/env.js";
+import {
+  CLAUDE_AGENTS_DIR,
+  CLAUDE_COMMANDS_DIR,
+  CLAUDE_PROFILES_DIR,
+} from "@/installer/env.js";
 import { LoaderRegistry } from "@/installer/features/loaderRegistry.js";
 import { error, success, info, warn } from "@/installer/logger.js";
 import { promptUser } from "@/installer/prompt.js";
@@ -88,7 +92,11 @@ const promptForUninstall = async (): Promise<{
 const cleanupEmptyDirectories = async (): Promise<void> => {
   info({ message: "Cleaning up empty directories..." });
 
-  const directoriesToCheck = [CLAUDE_AGENTS_DIR, CLAUDE_COMMANDS_DIR];
+  const directoriesToCheck = [
+    CLAUDE_AGENTS_DIR,
+    CLAUDE_COMMANDS_DIR,
+    CLAUDE_PROFILES_DIR,
+  ];
 
   for (const dir of directoriesToCheck) {
     try {

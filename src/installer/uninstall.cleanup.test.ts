@@ -72,6 +72,7 @@ describe("uninstall cleanup", () => {
   let claudeDir: string;
   let agentsDir: string;
   let commandsDir: string;
+  let profilesDir: string;
   let configPath: string;
   let originalHome: string | undefined;
 
@@ -86,6 +87,7 @@ describe("uninstall cleanup", () => {
     claudeDir = path.join(tempDir, ".claude");
     agentsDir = path.join(claudeDir, "agents");
     commandsDir = path.join(claudeDir, "commands");
+    profilesDir = path.join(claudeDir, "profiles");
     configPath = path.join(tempDir, "nori-config.json");
 
     // CRITICAL: Mock HOME to point to temp directory
@@ -234,6 +236,29 @@ describe("uninstall cleanup", () => {
         .catch(() => false);
 
       expect(commandsDirExists).toBe(false);
+    });
+
+    it("should remove empty profiles directory after uninstall", async () => {
+      // Set up free config
+      const config = { installType: "free" as const };
+
+      // Install profiles
+      await profilesLoader.run({ config });
+
+      // Verify profiles directory exists with files
+      const profileFiles = await fs.readdir(profilesDir);
+      expect(profileFiles.length).toBeGreaterThan(0);
+
+      // Run full uninstall
+      await runUninstall();
+
+      // Verify profiles directory is removed (since it should be empty)
+      const profilesDirExists = await fs
+        .access(profilesDir)
+        .then(() => true)
+        .catch(() => false);
+
+      expect(profilesDirExists).toBe(false);
     });
 
     it("should preserve directories with user-created files", async () => {
