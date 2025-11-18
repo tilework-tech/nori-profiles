@@ -131,10 +131,10 @@ const getMixinPaths = (args: { metadata: ProfileMetadata }): Array<string> => {
  * @param args.config - Runtime configuration
  */
 const installProfiles = async (args: { config: Config }): Promise<void> => {
-  const { config: _config } = args;
+  const { config } = args;
 
   const claudeProfilesDir = getClaudeProfilesDir({
-    installDir: _config.installDir,
+    installDir: config.installDir,
   });
 
   info({ message: "Installing Nori profiles..." });
@@ -179,7 +179,7 @@ const installProfiles = async (args: { config: Config }): Promise<void> => {
         });
 
         // Inject conditional mixins if user is paid
-        metadata = injectConditionalMixins({ metadata, config: _config });
+        metadata = injectConditionalMixins({ metadata, config });
       } catch {
         // No profile.json - skip composition
       }
@@ -272,7 +272,7 @@ const installProfiles = async (args: { config: Config }): Promise<void> => {
   }
 
   // Configure permissions for profiles directory
-  await configureProfilesPermissions({ config: _config });
+  await configureProfilesPermissions({ config });
 };
 
 /**
@@ -338,10 +338,10 @@ const configureProfilesPermissions = async (args: {
  * @param args.config - Runtime configuration
  */
 const uninstallProfiles = async (args: { config: Config }): Promise<void> => {
-  const { config: _config } = args;
+  const { config } = args;
 
   const claudeProfilesDir = getClaudeProfilesDir({
-    installDir: _config.installDir,
+    installDir: config.installDir,
   });
 
   info({ message: "Removing built-in Nori profiles..." });
@@ -404,7 +404,7 @@ const uninstallProfiles = async (args: { config: Config }): Promise<void> => {
   }
 
   // Remove permissions configuration
-  await removeProfilesPermissions({ config: _config });
+  await removeProfilesPermissions({ config });
 };
 
 /**
@@ -466,13 +466,13 @@ const removeProfilesPermissions = async (args: {
 const validate = async (args: {
   config: Config;
 }): Promise<ValidationResult> => {
-  const { config: _config } = args;
+  const { config } = args;
 
   const claudeProfilesDir = getClaudeProfilesDir({
-    installDir: _config.installDir,
+    installDir: config.installDir,
   });
   const claudeSettingsFile = getClaudeSettingsFile({
-    installDir: _config.installDir,
+    installDir: config.installDir,
   });
 
   const errors: Array<string> = [];
