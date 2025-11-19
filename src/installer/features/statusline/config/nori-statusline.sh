@@ -6,12 +6,21 @@
 # Read JSON context from stdin
 INPUT=$(cat)
 
-# === CONFIG TIER ENRICHMENT ===
-# Get config tier from ~/nori-config.json
-CONFIG_TIER="unknown"
-CONFIG_FILE="$HOME/nori-config.json"
+# Extract current working directory from JSON first (needed for config lookup)
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 
-if [ -f "$CONFIG_FILE" ]; then
+# === CONFIG TIER ENRICHMENT ===
+# Get config tier from .nori-config.json in CWD (no fallback to HOME)
+CONFIG_TIER="unknown"
+
+# Use CWD config only
+if [ -n "$CWD" ]; then
+    CONFIG_FILE="$CWD/.nori-config.json"
+else
+    CONFIG_FILE=""
+fi
+
+if [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ]; then
     # Check if auth credentials exist in config
     HAS_AUTH=$(jq -r 'select(.username != null and .password != null and .organizationUrl != null) | "true"' "$CONFIG_FILE" 2>/dev/null)
 
@@ -46,9 +55,6 @@ CYAN='\033[0;36m'
 YELLOW='\033[0;33m'
 DIM_WHITE='\033[2;37m'
 NC='\033[0m' # No Color
-
-# Extract current working directory from JSON
-CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 
 # Get git branch
 BRANCH=""

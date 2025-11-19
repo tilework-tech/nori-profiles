@@ -157,10 +157,14 @@ const removeConfigFile = async (args?: {
 }): Promise<void> => {
   const { installDir } = args || {};
   const configPath = getConfigPath({ installDir });
-  const versionPath = path.join(
-    process.env.HOME || "~",
-    ".nori-installed-version",
-  );
+
+  // Version file is in installDir if provided, otherwise HOME
+  let versionPath: string;
+  if (installDir != null && installDir !== "") {
+    versionPath = path.join(installDir, ".nori-installed-version");
+  } else {
+    versionPath = path.join(process.env.HOME || "~", ".nori-installed-version");
+  }
 
   info({ message: "Removing Nori configuration files..." });
 

@@ -60,8 +60,30 @@ export const getConfigPath = (args?: {
     return path.join(installDir, ".nori-config.json");
   }
 
-  // Legacy behavior: use HOME directory with non-dotfile name
-  return path.join(process.env.HOME || "~", "nori-config.json");
+  // Default behavior: use HOME directory with dotfile name
+  return path.join(process.env.HOME || "~", ".nori-config.json");
+};
+
+/**
+ * Find the config file path by checking CWD only (no fallback)
+ * @param args - Configuration arguments
+ * @param args.cwd - Current working directory to check (defaults to process.cwd())
+ *
+ * @returns The path to .nori-config.json if found, null otherwise
+ */
+export const findConfigPath = async (args?: {
+  cwd?: string | null;
+}): Promise<string | null> => {
+  const { cwd } = args || {};
+  const targetDir = cwd || process.cwd();
+  const configPath = path.join(targetDir, ".nori-config.json");
+
+  try {
+    await fs.access(configPath);
+    return configPath;
+  } catch {
+    return null;
+  }
 };
 
 /**

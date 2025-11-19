@@ -140,14 +140,14 @@ describe("statuslineLoader", () => {
   });
 
   describe("statusline script", () => {
-    it("should include profile name in output when nori-config.json exists", async () => {
+    it("should include profile name in output when .nori-config.json exists", async () => {
       const config: Config = { installType: "free" };
 
       // Install statusline
       await statuslineLoader.run({ config });
 
-      // Create mock nori-config.json with profile in temp directory
-      const noriConfigPath = path.join(tempDir, "nori-config.json");
+      // Create mock .nori-config.json with profile in temp directory (CWD)
+      const noriConfigPath = path.join(tempDir, ".nori-config.json");
       const noriConfigContent = JSON.stringify({
         profile: { baseProfile: "amol" },
       });
@@ -179,19 +179,19 @@ describe("statuslineLoader", () => {
         // Verify output contains profile name
         expect(output).toContain("Profile: amol");
       } finally {
-        // Clean up nori-config.json
+        // Clean up .nori-config.json
         await fs.rm(noriConfigPath, { force: true });
       }
     });
 
-    it("should not show profile when nori-config.json does not exist", async () => {
+    it("should not show profile when .nori-config.json does not exist", async () => {
       const config: Config = { installType: "free" };
 
       // Install statusline
       await statuslineLoader.run({ config });
 
-      // Ensure nori-config.json does not exist in temp directory
-      const noriConfigPath = path.join(tempDir, "nori-config.json");
+      // Ensure .nori-config.json does not exist in temp directory
+      const noriConfigPath = path.join(tempDir, ".nori-config.json");
       await fs.rm(noriConfigPath, { force: true });
 
       try {

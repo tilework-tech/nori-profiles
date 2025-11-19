@@ -12,6 +12,8 @@ import {
   loadDiskConfig,
   saveDiskConfig,
   generateConfig,
+  getConfigPath,
+  findConfigPath,
   type DiskConfig,
 } from "./config.js";
 
@@ -23,7 +25,7 @@ describe("config with profile-based system", () => {
   beforeEach(async () => {
     // Create temp directory for testing
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "config-test-"));
-    mockConfigPath = path.join(tempDir, "nori-config.json");
+    mockConfigPath = path.join(tempDir, ".nori-config.json");
 
     // Mock HOME environment variable
     originalHome = process.env.HOME;
@@ -329,6 +331,89 @@ describe("config with profile-based system", () => {
       const config = generateConfig({ diskConfig });
 
       expect(config.installDir).toBe(customDir);
+    });
+  });
+
+  describe("getConfigPath", () => {
+    it("should return .nori-config.json in HOME when no installDir provided", () => {
+      const configPath = getConfigPath();
+
+      expect(configPath).toBe(path.join(tempDir, ".nori-config.json"));
+    });
+
+    it("should return .nori-config.json in installDir when provided", () => {
+      const customDir = "/custom/project";
+      const configPath = getConfigPath({ installDir: customDir });
+
+      expect(configPath).toBe(path.join(customDir, ".nori-config.json"));
+    });
+  });
+
+  describe("findConfigPath", () => {
+    it("should find .nori-config.json in provided directory when it exists", async () => {
+      const projectDir = path.join(tempDir, "my-project");
+      await fs.mkdir(projectDir, { recursive: true });
+
+      // Create config in project directory
+      const configPath = path.join(projectDir, ".nori-config.json");
+      await fs.writeFile(
+        configPath,
+        JSON.stringify({ profile: { baseProfile: "senior-swe" } }),
+      );
+
+      const foundPath = await findConfigPath({ cwd: projectDir });
+
+      expect(foundPath).toBe(configPath);
+    });
+
+    it("should return null when .nori-config.json does not exist in provided directory", async () => {
+      const projectDir = path.join(tempDir, "empty-project");
+      await fs.mkdir(projectDir, { recursive: true });
+
+      const foundPath = await findConfigPath({ cwd: projectDir });
+
+      expect(foundPath).toBeNull();
+    });
+
+    it("should NOT fall back to HOME directory", async () => {
+      const projectDir = path.join(tempDir, "project-without-config");
+      await fs.mkdir(projectDir, { recursive: true });
+
+      // Create config in HOME (should NOT be found)
+      const homeConfigPath = path.join(tempDir, ".nori-config.json");
+      await fs.writeFile(
+        homeConfigPath,
+        JSON.stringify({ profile: { baseProfile: "senior-swe" } }),
+      );
+
+      const foundPath = await findConfigPath({ cwd: projectDir });
+
+      // Should return null, NOT the home config
+      expect(foundPath).toBeNull();
+    });
+
+    it("should use process.cwd() when cwd not provided", async () => {
+      // Create config in current working directory
+      const originalCwd = process.cwd();
+
+      try {
+        // Change to temp directory
+        process.chdir(tempDir);
+
+        // Create config in tempDir (now CWD)
+        const configPath = path.join(tempDir, ".nori-config.json");
+        await fs.writeFile(
+          configPath,
+          JSON.stringify({ profile: { baseProfile: "senior-swe" } }),
+        );
+
+        const foundPath = await findConfigPath();
+
+        expect(foundPath).toBe(configPath);
+      } finally {
+        // Restore original CWD
+        process.chdir(originalCwd);
+      }
     });
   });
 });

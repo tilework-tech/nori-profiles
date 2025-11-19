@@ -13,7 +13,6 @@ import { main, serializeError } from "./script.js";
 
 describe("paid-sync-noridocs script", () => {
   let tempConfigPath: string;
-  let originalHome: string | undefined;
   let originalArgv: Array<string>;
   let originalCwd: string;
   let tempProjectDir: string;
@@ -22,13 +21,8 @@ describe("paid-sync-noridocs script", () => {
   let processExitSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
-    originalHome = process.env.HOME;
     originalArgv = process.argv;
     originalCwd = process.cwd();
-
-    const tempDir = path.join(os.tmpdir(), `sync-noridocs-test-${Date.now()}`);
-    process.env.HOME = tempDir;
-    tempConfigPath = path.join(tempDir, "nori-config.json");
 
     tempProjectDir = path.join(
       os.tmpdir(),
@@ -36,6 +30,8 @@ describe("paid-sync-noridocs script", () => {
     );
     await fs.mkdir(tempProjectDir, { recursive: true });
     process.chdir(tempProjectDir);
+    // Config file is now in CWD (tempProjectDir)
+    tempConfigPath = path.join(tempProjectDir, ".nori-config.json");
 
     // Initialize git repo in temp project directory
     execSync("git init -b main", { cwd: tempProjectDir });
@@ -58,24 +54,12 @@ describe("paid-sync-noridocs script", () => {
   });
 
   afterEach(async () => {
-    if (originalHome !== undefined) {
-      process.env.HOME = originalHome;
-    }
     process.argv = originalArgv;
     process.chdir(originalCwd);
 
     consoleErrorSpy.mockRestore();
     consoleLogSpy.mockRestore();
     processExitSpy.mockRestore();
-
-    try {
-      await fs.rm(path.dirname(tempConfigPath), {
-        recursive: true,
-        force: true,
-      });
-    } catch {
-      // Ignore cleanup errors
-    }
 
     try {
       await fs.rm(tempProjectDir, { recursive: true, force: true });
@@ -96,7 +80,6 @@ describe("paid-sync-noridocs script", () => {
     });
 
     it("should fail when config has no auth credentials", async () => {
-      await fs.mkdir(path.dirname(tempConfigPath), { recursive: true });
       await fs.writeFile(tempConfigPath, JSON.stringify({}));
 
       process.argv = ["node", "script.js"];
@@ -108,7 +91,6 @@ describe("paid-sync-noridocs script", () => {
 
   describe("file finding", () => {
     it("should handle no docs.md files found", async () => {
-      await fs.mkdir(path.dirname(tempConfigPath), { recursive: true });
       await fs.writeFile(
         tempConfigPath,
         JSON.stringify({

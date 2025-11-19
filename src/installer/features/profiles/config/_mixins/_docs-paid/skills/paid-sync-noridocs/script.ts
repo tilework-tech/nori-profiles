@@ -276,13 +276,16 @@ const syncFile = async (args: {
  * Main execution function
  */
 export const main = async (): Promise<void> => {
-  // 1. Check tier
-  const diskConfig = await loadDiskConfig();
+  // 1. Check tier - use CWD for config location
+  const cwd = process.cwd();
+  const diskConfig = await loadDiskConfig({ installDir: cwd });
   const config = generateConfig({ diskConfig });
 
   if (config.installType !== "paid") {
     console.error("Error: This feature requires a paid Nori subscription.");
-    console.error("Please configure your credentials in ~/nori-config.json");
+    console.error(
+      `Please configure your credentials in ${cwd}/.nori-config.json`,
+    );
     process.exit(1);
   }
 
@@ -295,7 +298,6 @@ export const main = async (): Promise<void> => {
   }
 
   const delay = (args.delay as number | null) ?? 500;
-  const cwd = process.cwd();
 
   // Auto-detect git remote URL if not provided
   const gitRepoUrl =

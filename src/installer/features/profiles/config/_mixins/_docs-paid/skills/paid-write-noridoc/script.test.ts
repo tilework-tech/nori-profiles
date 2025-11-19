@@ -11,19 +11,21 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { main } from "./script.js";
 
 describe("paid-write-noridoc script", () => {
+  let tempDir: string;
   let tempConfigPath: string;
-  let originalHome: string | undefined;
+  let originalCwd: string;
   let originalArgv: Array<string>;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
   let processExitSpy: ReturnType<typeof vi.spyOn>;
 
-  beforeEach(() => {
-    originalHome = process.env.HOME;
+  beforeEach(async () => {
+    originalCwd = process.cwd();
     originalArgv = process.argv;
 
-    const tempDir = path.join(os.tmpdir(), `write-noridoc-test-${Date.now()}`);
-    process.env.HOME = tempDir;
-    tempConfigPath = path.join(tempDir, "nori-config.json");
+    tempDir = path.join(os.tmpdir(), `write-noridoc-test-${Date.now()}`);
+    await fs.mkdir(tempDir, { recursive: true });
+    process.chdir(tempDir);
+    tempConfigPath = path.join(tempDir, ".nori-config.json");
 
     consoleErrorSpy = vi
       .spyOn(console, "error")
@@ -36,16 +38,14 @@ describe("paid-write-noridoc script", () => {
   });
 
   afterEach(async () => {
-    if (originalHome !== undefined) {
-      process.env.HOME = originalHome;
-    }
+    process.chdir(originalCwd);
     process.argv = originalArgv;
 
     consoleErrorSpy.mockRestore();
     processExitSpy.mockRestore();
 
     try {
-      await fs.rm(path.dirname(tempConfigPath), {
+      await fs.rm(tempDir, {
         recursive: true,
         force: true,
       });
@@ -71,7 +71,6 @@ describe("paid-write-noridoc script", () => {
     });
 
     it("should fail when config has no auth credentials", async () => {
-      await fs.mkdir(path.dirname(tempConfigPath), { recursive: true });
       await fs.writeFile(tempConfigPath, JSON.stringify({}));
 
       process.argv = [
@@ -88,7 +87,6 @@ describe("paid-write-noridoc script", () => {
 
   describe("argument parsing", () => {
     it("should fail when --filePath is missing", async () => {
-      await fs.mkdir(path.dirname(tempConfigPath), { recursive: true });
       await fs.writeFile(
         tempConfigPath,
         JSON.stringify({
@@ -108,7 +106,6 @@ describe("paid-write-noridoc script", () => {
     });
 
     it("should fail when --content is missing", async () => {
-      await fs.mkdir(path.dirname(tempConfigPath), { recursive: true });
       await fs.writeFile(
         tempConfigPath,
         JSON.stringify({
@@ -128,7 +125,6 @@ describe("paid-write-noridoc script", () => {
     });
 
     it("should show usage help when arguments are invalid", async () => {
-      await fs.mkdir(path.dirname(tempConfigPath), { recursive: true });
       await fs.writeFile(
         tempConfigPath,
         JSON.stringify({

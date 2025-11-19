@@ -11,21 +11,23 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { main } from "./script.js";
 
 describe("paid-memorize script", () => {
+  let tempDir: string;
   let tempConfigPath: string;
-  let originalHome: string | undefined;
+  let originalCwd: string;
   let originalArgv: Array<string>;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
   let processExitSpy: ReturnType<typeof vi.spyOn>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Save original state
-    originalHome = process.env.HOME;
+    originalCwd = process.cwd();
     originalArgv = process.argv;
 
-    // Create temp directory for config
-    const tempDir = path.join(os.tmpdir(), `memorize-test-${Date.now()}`);
-    process.env.HOME = tempDir;
-    tempConfigPath = path.join(tempDir, "nori-config.json");
+    // Create temp directory for config and change to it
+    tempDir = path.join(os.tmpdir(), `memorize-test-${Date.now()}`);
+    await fs.mkdir(tempDir, { recursive: true });
+    process.chdir(tempDir);
+    tempConfigPath = path.join(tempDir, ".nori-config.json");
 
     // Mock console.error and process.exit
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {
@@ -40,9 +42,7 @@ describe("paid-memorize script", () => {
 
   afterEach(async () => {
     // Restore original state
-    if (originalHome !== undefined) {
-      process.env.HOME = originalHome;
-    }
+    process.chdir(originalCwd);
     process.argv = originalArgv;
 
     // Restore mocks
@@ -51,7 +51,7 @@ describe("paid-memorize script", () => {
 
     // Clean up temp config
     try {
-      await fs.rm(path.dirname(tempConfigPath), {
+      await fs.rm(tempDir, {
         recursive: true,
         force: true,
       });
@@ -73,7 +73,6 @@ describe("paid-memorize script", () => {
     });
 
     it("should fail with error message when config has no auth credentials", async () => {
-      await fs.mkdir(path.dirname(tempConfigPath), { recursive: true });
       await fs.writeFile(tempConfigPath, JSON.stringify({}));
 
       process.argv = ["node", "script.js", "--name=Test", "--content=Content"];
@@ -90,7 +89,6 @@ describe("paid-memorize script", () => {
   describe("argument parsing", () => {
     it("should fail when --name is missing", async () => {
       // Create paid config
-      await fs.mkdir(path.dirname(tempConfigPath), { recursive: true });
       await fs.writeFile(
         tempConfigPath,
         JSON.stringify({
@@ -112,7 +110,6 @@ describe("paid-memorize script", () => {
 
     it("should fail when --content is missing", async () => {
       // Create paid config
-      await fs.mkdir(path.dirname(tempConfigPath), { recursive: true });
       await fs.writeFile(
         tempConfigPath,
         JSON.stringify({
@@ -133,7 +130,6 @@ describe("paid-memorize script", () => {
     });
 
     it("should show usage help when arguments are invalid", async () => {
-      await fs.mkdir(path.dirname(tempConfigPath), { recursive: true });
       await fs.writeFile(
         tempConfigPath,
         JSON.stringify({

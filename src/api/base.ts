@@ -1,5 +1,4 @@
 import { readFileSync, existsSync } from "fs";
-import { homedir } from "os";
 import { join } from "path";
 
 import { signInWithEmailAndPassword } from "firebase/auth";
@@ -14,12 +13,19 @@ export type NoriConfig = {
 };
 
 export class ConfigManager {
-  private static readonly CONFIG_PATH = join(homedir(), "nori-config.json");
+  /**
+   * Get the config path - uses CWD only (no fallback)
+   * @returns The path to .nori-config.json in CWD
+   */
+  private static getConfigPath = (): string => {
+    return join(process.cwd(), ".nori-config.json");
+  };
 
   static loadConfig = (): NoriConfig => {
     try {
-      if (existsSync(ConfigManager.CONFIG_PATH)) {
-        const content = readFileSync(ConfigManager.CONFIG_PATH, "utf8");
+      const configPath = ConfigManager.getConfigPath();
+      if (existsSync(configPath)) {
+        const content = readFileSync(configPath, "utf8");
 
         // RACE CONDITION HANDLING:
         // During fresh installation, trackEvent() is called fire-and-forget (not awaited)

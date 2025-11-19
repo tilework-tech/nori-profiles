@@ -151,7 +151,7 @@ const summarizeConversation = async (args: {
   if (!ConfigManager.isConfigured()) {
     error({
       message:
-        "Nori hook: Not configured. Skipping memorization. Set credentials in ~/nori-config.json",
+        "Nori hook: Not configured. Skipping memorization. Set credentials in .nori-config.json",
     });
     return;
   }
