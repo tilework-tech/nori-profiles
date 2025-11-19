@@ -35,3 +35,6 @@ __pycache__/
 
 # Worktrees
 .worktrees/
+
+# duh.
+.claude/
