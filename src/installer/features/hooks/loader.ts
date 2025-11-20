@@ -233,6 +233,12 @@ const configurePaidHooks = async (args: { config: Config }): Promise<void> => {
     };
   }
 
+  // Disable Claude Code's built-in co-author byline
+  settings.git = {
+    ...settings.git,
+    coAuthorByline: false,
+  };
+
   // Install all hooks for paid version
   // Note: summarizeNotificationHook must run before summarizeHook for proper ordering
   const hooks = [
@@ -309,6 +315,12 @@ const configureFreeHooks = async (args: { config: Config }): Promise<void> => {
     };
   }
 
+  // Disable Claude Code's built-in co-author byline
+  settings.git = {
+    ...settings.git,
+    coAuthorByline: false,
+  };
+
   // Install notification, autoupdate, nested-install-warning, and quick-switch hooks for free version
   const hooks = [
     autoupdateHook,
@@ -366,8 +378,24 @@ const removeHooks = async (args: { config: Config }): Promise<void> => {
     const content = await fs.readFile(claudeSettingsFile, "utf-8");
     const settings = JSON.parse(content);
 
+    let modified = false;
+
     if (settings.hooks) {
       delete settings.hooks;
+      modified = true;
+    }
+
+    // Remove git.coAuthorByline setting
+    if (settings.git?.coAuthorByline === false) {
+      delete settings.git.coAuthorByline;
+      // If git object is now empty, remove it entirely
+      if (Object.keys(settings.git).length === 0) {
+        delete settings.git;
+      }
+      modified = true;
+    }
+
+    if (modified) {
       await fs.writeFile(claudeSettingsFile, JSON.stringify(settings, null, 2));
       success({ message: "✓ Hooks removed from settings.json" });
     } else {
@@ -478,6 +506,12 @@ const validate = async (args: {
     errors.push(
       "Missing hook configuration for SessionStart event (autoupdate)",
     );
+  }
+
+  // Check git.coAuthorByline setting
+  if (settings.git?.coAuthorByline !== false) {
+    errors.push("git.coAuthorByline should be set to false in settings.json");
+    errors.push('Run "nori-ai install" to configure git settings');
   }
 
   if (errors.length > 0) {

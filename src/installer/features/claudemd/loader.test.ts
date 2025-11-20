@@ -456,6 +456,23 @@ More user instructions.
       expect(content).not.toContain(`${claudeDir}/skills/paid-memorize`);
     });
 
+    it("should include Nori commit attribution instructions in CLAUDE.md", async () => {
+      const config: Config = {
+        installType: "free",
+        profile: { baseProfile: "senior-swe" },
+        installDir: tempDir,
+      };
+
+      await claudeMdLoader.run({ config });
+
+      const content = await fs.readFile(claudeMdPath, "utf-8");
+
+      // Should contain Nori commit attribution section
+      expect(content).toContain("# Nori Commit Attribution");
+      expect(content).toContain("Co-Authored-By: Nori <noreply@tilework.tech>");
+      expect(content).toContain("🤖 Generated with [Nori](https://nori.ai)");
+    });
+
     it("should handle profiles with no skills gracefully", async () => {
       const config: Config = {
         installType: "free",
