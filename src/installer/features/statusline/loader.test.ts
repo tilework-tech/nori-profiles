@@ -139,9 +139,145 @@ describe("statuslineLoader", () => {
     });
   });
 
+  describe("script copying", () => {
+    it("should copy script to .claude directory", async () => {
+      const config: Config = { installType: "free", installDir: claudeDir };
+
+      await statuslineLoader.run({ config });
+
+      // Verify script was copied to .claude directory
+      const copiedScriptPath = path.join(claudeDir, "nori-statusline.sh");
+      const exists = await fs
+        .access(copiedScriptPath)
+        .then(() => true)
+        .catch(() => false);
+
+      expect(exists).toBe(true);
+
+      // Verify script contains upward search logic
+      const scriptContent = await fs.readFile(copiedScriptPath, "utf-8");
+      expect(scriptContent).toContain("find_install_dir");
+      expect(scriptContent).toContain(".nori-config.json");
+    });
+
+    it("should point settings.json to copied script in .claude directory", async () => {
+      const config: Config = { installType: "free", installDir: claudeDir };
+
+      await statuslineLoader.run({ config });
+
+      // Read settings.json
+      const content = await fs.readFile(settingsPath, "utf-8");
+      const settings = JSON.parse(content);
+
+      // Verify command points to copied script in .claude directory
+      const expectedScriptPath = path.join(claudeDir, "nori-statusline.sh");
+      expect(settings.statusLine.command).toBe(expectedScriptPath);
+    });
+  });
+
+  describe("subdirectory detection", () => {
+    it("should detect paid tier when running from subdirectory", async () => {
+      const config: Config = { installType: "paid", installDir: claudeDir };
+
+      // Install statusline
+      await statuslineLoader.run({ config });
+
+      // Create mock .nori-config.json with auth credentials in install root
+      const noriConfigPath = path.join(tempDir, ".nori-config.json");
+      const noriConfigContent = JSON.stringify({
+        username: "test",
+        password: "test",
+        organizationUrl: "https://test.com",
+      });
+      await fs.writeFile(noriConfigPath, noriConfigContent);
+
+      // Create subdirectory
+      const subdir = path.join(tempDir, "foo", "bar");
+      await fs.mkdir(subdir, { recursive: true });
+
+      try {
+        // Read settings to get the statusLine command
+        const content = await fs.readFile(settingsPath, "utf-8");
+        const settings = JSON.parse(content);
+        const statusLineCommand = settings.statusLine.command;
+
+        // Execute the statusline script with cwd pointing to subdirectory
+        const { execSync } = await import("child_process");
+        const mockInput = JSON.stringify({
+          cwd: subdir,
+          cost: {
+            total_cost_usd: 1.5,
+            total_lines_added: 10,
+            total_lines_removed: 5,
+          },
+          transcript_path: "",
+        });
+
+        const output = execSync(statusLineCommand, {
+          input: mockInput,
+          encoding: "utf-8",
+        });
+
+        // Verify output contains paid tier branding (no upgrade link)
+        expect(output).toContain("Augmented with Nori");
+        expect(output).not.toContain("upgrade");
+      } finally {
+        // Clean up
+        await fs.rm(noriConfigPath, { force: true });
+      }
+    });
+
+    it("should detect free tier when running from subdirectory", async () => {
+      const config: Config = { installType: "free", installDir: claudeDir };
+
+      // Install statusline
+      await statuslineLoader.run({ config });
+
+      // Create mock .nori-config.json without auth credentials
+      const noriConfigPath = path.join(tempDir, ".nori-config.json");
+      const noriConfigContent = JSON.stringify({});
+      await fs.writeFile(noriConfigPath, noriConfigContent);
+
+      // Create subdirectory
+      const subdir = path.join(tempDir, "foo", "bar");
+      await fs.mkdir(subdir, { recursive: true });
+
+      try {
+        // Read settings to get the statusLine command
+        const content = await fs.readFile(settingsPath, "utf-8");
+        const settings = JSON.parse(content);
+        const statusLineCommand = settings.statusLine.command;
+
+        // Execute the statusline script with cwd pointing to subdirectory
+        const { execSync } = await import("child_process");
+        const mockInput = JSON.stringify({
+          cwd: subdir,
+          cost: {
+            total_cost_usd: 1.5,
+            total_lines_added: 10,
+            total_lines_removed: 5,
+          },
+          transcript_path: "",
+        });
+
+        const output = execSync(statusLineCommand, {
+          input: mockInput,
+          encoding: "utf-8",
+        });
+
+        // Verify output contains free tier branding (with upgrade link)
+        expect(output).toContain("Augmented with Nori");
+        expect(output).toContain("upgrade");
+      } finally {
+        // Clean up
+        await fs.rm(noriConfigPath, { force: true });
+      }
+    });
+  });
+
   describe("statusline script", () => {
     it("should include profile name in output when nori-config.json exists", async () => {
-      const config: Config = { installType: "free", installDir: tempDir };
+      const config: Config = { installType: "free", installDir: claudeDir };
 
       // Install statusline
       await statuslineLoader.run({ config });
@@ -185,7 +321,7 @@ describe("statuslineLoader", () => {
     });
 
     it("should not show profile when nori-config.json does not exist", async () => {
-      const config: Config = { installType: "free", installDir: tempDir };
+      const config: Config = { installType: "free", installDir: claudeDir };
 
       // Install statusline
       await statuslineLoader.run({ config });
