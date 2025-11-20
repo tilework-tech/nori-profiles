@@ -110,7 +110,10 @@ describe("getClaudeProfilesDir", () => {
 describe("getClaudeHomeDir", () => {
   it("should return ~/.claude expanded to absolute path", () => {
     const result = getClaudeHomeDir();
-    const expected = path.join(process.env.HOME || process.env.USERPROFILE || "~", ".claude");
+    const expected = path.join(
+      process.env.HOME || process.env.USERPROFILE || "~",
+      ".claude",
+    );
     expect(result).toBe(expected);
   });
 

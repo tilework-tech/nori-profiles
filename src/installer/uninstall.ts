@@ -183,17 +183,26 @@ const removeConfigFile = async (args: {
 /**
  * Core uninstall logic (can be called programmatically)
  * Preserves config file by default (for upgrades). Only removes config when removeConfig=true.
+ * In non-interactive mode, hooks and statusline are NOT removed from ~/.claude to avoid
+ * breaking other Nori installations.
  * @param args - Configuration arguments
  * @param args.removeConfig - Whether to remove the config file (default: false)
+ * @param args.removeHooksAndStatusline - Whether to remove hooks and statusline from ~/.claude (default: false)
  * @param args.installedVersion - Version being uninstalled (for logging)
  * @param args.installDir - Installation directory
  */
 export const runUninstall = async (args: {
   removeConfig?: boolean | null;
+  removeHooksAndStatusline?: boolean | null;
   installedVersion?: string | null;
   installDir: string;
 }): Promise<void> => {
-  const { removeConfig, installedVersion, installDir } = args;
+  const {
+    removeConfig,
+    removeHooksAndStatusline,
+    installedVersion,
+    installDir,
+  } = args;
 
   // Load config to determine install type (defaults to free if none exists)
   const existingDiskConfig = await loadDiskConfig({ installDir });
@@ -212,23 +221,31 @@ export const runUninstall = async (args: {
     },
   });
 
-  // Load all feature loaders in reverse order for uninstall
-  // During install, profiles must run first to create profile directories.
-  // During uninstall, profiles must run last so other loaders can still
-  // read from profile directories to know what files to remove.
-  const registry = LoaderRegistry.getInstance();
-  const loaders = registry.getAllReversed();
+  // Only remove hooks and statusline if explicitly requested (interactive mode)
+  if (removeHooksAndStatusline) {
+    // Load all feature loaders in reverse order for uninstall
+    // During install, profiles must run first to create profile directories.
+    // During uninstall, profiles must run last so other loaders can still
+    // read from profile directories to know what files to remove.
+    const registry = LoaderRegistry.getInstance();
+    const loaders = registry.getAllReversed();
 
-  // Execute uninstallers sequentially to avoid race conditions
-  // (hooks and statusline both read/write settings.json)
-  for (const loader of loaders) {
-    try {
-      await loader.uninstall({ config });
-    } catch (err: any) {
-      warn({
-        message: `Failed to uninstall ${loader.name}: ${err.message}`,
-      });
+    // Execute uninstallers sequentially to avoid race conditions
+    // (hooks and statusline both read/write settings.json)
+    for (const loader of loaders) {
+      try {
+        await loader.uninstall({ config });
+      } catch (err: any) {
+        warn({
+          message: `Failed to uninstall ${loader.name}: ${err.message}`,
+        });
+      }
     }
+  } else {
+    info({
+      message:
+        "Skipping removal of hooks and statusline from ~/.claude (non-interactive mode)",
+    });
   }
 
   // Clean up empty directories and standalone files
@@ -269,8 +286,13 @@ export const main = async (args?: {
     // Initialize analytics
 
     if (nonInteractive) {
-      // Non-interactive mode: preserve config (for upgrades/autoupdate)
-      await runUninstall({ removeConfig: false, installDir });
+      // Non-interactive mode: preserve config and do not remove hooks/statusline
+      // (for upgrades/autoupdate - avoid breaking other installations)
+      await runUninstall({
+        removeConfig: false,
+        removeHooksAndStatusline: false,
+        installDir,
+      });
     } else {
       // Interactive mode: prompt for confirmation and remove config
       const result = await promptForUninstall({ installDir });
@@ -279,8 +301,12 @@ export const main = async (args?: {
         process.exit(0);
       }
 
-      // Run uninstall and remove config (user-initiated uninstall)
-      await runUninstall({ removeConfig: true, installDir });
+      // Run uninstall, remove config, and remove hooks/statusline (user-initiated uninstall)
+      await runUninstall({
+        removeConfig: true,
+        removeHooksAndStatusline: true,
+        installDir,
+      });
     }
 
     // Uninstallation complete

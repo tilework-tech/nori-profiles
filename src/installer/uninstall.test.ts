@@ -16,6 +16,8 @@ let mockConfigPath = "/tmp/test-config.json";
 vi.mock("@/installer/env.js", () => ({
   getClaudeDir: () => mockClaudeDir,
   getClaudeSettingsFile: () => path.join(mockClaudeDir, "settings.json"),
+  getClaudeHomeDir: () => mockClaudeDir,
+  getClaudeHomeSettingsFile: () => path.join(mockClaudeDir, "settings.json"),
   getClaudeAgentsDir: () => path.join(mockClaudeDir, "agents"),
   getClaudeCommandsDir: () => path.join(mockClaudeDir, "commands"),
   getClaudeMdFile: () => path.join(mockClaudeDir, "CLAUDE.md"),
@@ -104,9 +106,15 @@ describe("uninstall idempotency", () => {
 
   it("should be idempotent when called on fresh system (no files exist)", async () => {
     // Multiple calls should not throw even when nothing is installed
-    await expect(runUninstall({ installDir: tempDir })).resolves.not.toThrow();
-    await expect(runUninstall({ installDir: tempDir })).resolves.not.toThrow();
-    await expect(runUninstall({ installDir: tempDir })).resolves.not.toThrow();
+    await expect(
+      runUninstall({ removeHooksAndStatusline: true, installDir: tempDir }),
+    ).resolves.not.toThrow();
+    await expect(
+      runUninstall({ removeHooksAndStatusline: true, installDir: tempDir }),
+    ).resolves.not.toThrow();
+    await expect(
+      runUninstall({ removeHooksAndStatusline: true, installDir: tempDir }),
+    ).resolves.not.toThrow();
   });
 
   it("should be idempotent when called multiple times after install", async () => {
@@ -132,7 +140,9 @@ describe("uninstall idempotency", () => {
     );
 
     // First call - feature loaders clean up their files, preserves config
-    await expect(runUninstall({ installDir: tempDir })).resolves.not.toThrow();
+    await expect(
+      runUninstall({ removeHooksAndStatusline: true, installDir: tempDir }),
+    ).resolves.not.toThrow();
 
     // Verify config was preserved
     const configExists = await fs
@@ -142,8 +152,12 @@ describe("uninstall idempotency", () => {
     expect(configExists).toBe(true);
 
     // Second and third calls should not throw
-    await expect(runUninstall({ installDir: tempDir })).resolves.not.toThrow();
-    await expect(runUninstall({ installDir: tempDir })).resolves.not.toThrow();
+    await expect(
+      runUninstall({ removeHooksAndStatusline: true, installDir: tempDir }),
+    ).resolves.not.toThrow();
+    await expect(
+      runUninstall({ removeHooksAndStatusline: true, installDir: tempDir }),
+    ).resolves.not.toThrow();
   });
 
   it("should remove config when removeConfig is true", async () => {
@@ -186,7 +200,9 @@ describe("uninstall idempotency", () => {
     await fs.writeFile(path.join(skillsDir, "test.txt"), "test");
 
     // First call - feature loaders clean up, config doesn't exist
-    await expect(runUninstall({ installDir: tempDir })).resolves.not.toThrow();
+    await expect(
+      runUninstall({ removeHooksAndStatusline: true, installDir: tempDir }),
+    ).resolves.not.toThrow();
 
     // Create only config file (no skills directory)
     mockLoadedConfig = {
@@ -206,10 +222,14 @@ describe("uninstall idempotency", () => {
     );
 
     // Second call - preserves config, skills don't exist
-    await expect(runUninstall({ installDir: tempDir })).resolves.not.toThrow();
+    await expect(
+      runUninstall({ removeHooksAndStatusline: true, installDir: tempDir }),
+    ).resolves.not.toThrow();
 
     // Third call - nothing new to clean
-    await expect(runUninstall({ installDir: tempDir })).resolves.not.toThrow();
+    await expect(
+      runUninstall({ removeHooksAndStatusline: true, installDir: tempDir }),
+    ).resolves.not.toThrow();
   });
 
   it("should preserve config when removeConfig is false (autoupdate scenario)", async () => {
