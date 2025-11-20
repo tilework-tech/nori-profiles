@@ -32,19 +32,20 @@ import { normalizeInstallDir } from "@/utils/path.js";
  * @param args - Configuration arguments
  * @param args.installDir - Installation directory
  *
- * @returns The configuration (paid or free) if user confirms, null to exit
+ * @returns The configuration and removeHooksAndStatusline flag if user confirms, null to exit
  */
 const promptForUninstall = async (args: {
   installDir: string;
 }): Promise<{
   config: Config;
+  removeHooksAndStatusline: boolean;
 } | null> => {
   const { installDir } = args;
 
   info({ message: "Nori Profiles Uninstaller" });
   console.log();
   warn({
-    message: "This will remove all Nori Profiles features from your system.",
+    message: "This will remove Nori Profiles features from your system.",
   });
   console.log();
 
@@ -72,7 +73,8 @@ const promptForUninstall = async (args: {
     info({ message: "  - Automatic memorization hooks" });
   }
   info({ message: "  - Desktop notification hook" });
-  info({ message: "  - Status line configuration" });
+  info({ message: "  - Skills and profiles" });
+  info({ message: "  - Slash commands" });
   info({ message: "  - CLAUDE.md (with confirmation)" });
   info({ message: "  - Nori configuration file" });
   console.log();
@@ -88,9 +90,28 @@ const promptForUninstall = async (args: {
 
   console.log();
 
+  // Ask if user wants to remove hooks and statusline from ~/.claude
+  warn({
+    message:
+      "Hooks and statusline are installed in ~/.claude/settings.json and are shared across all Nori installations.",
+  });
+  info({
+    message: "If you have other Nori installations, you may want to keep them.",
+  });
+  console.log();
+
+  const removeHooks = await promptUser({
+    prompt:
+      "Do you want to remove hooks and statusline from ~/.claude/settings.json? (y/n): ",
+  });
+
+  const removeHooksAndStatusline = removeHooks.match(/^[Yy]$/) ? true : false;
+
+  console.log();
+
   const config = generateConfig({ diskConfig: existingDiskConfig, installDir });
 
-  return { config };
+  return { config, removeHooksAndStatusline };
 };
 
 /**
@@ -301,10 +322,10 @@ export const main = async (args?: {
         process.exit(0);
       }
 
-      // Run uninstall, remove config, and remove hooks/statusline (user-initiated uninstall)
+      // Run uninstall, remove config, and conditionally remove hooks/statusline based on user choice
       await runUninstall({
         removeConfig: true,
-        removeHooksAndStatusline: true,
+        removeHooksAndStatusline: result.removeHooksAndStatusline,
         installDir,
       });
     }
