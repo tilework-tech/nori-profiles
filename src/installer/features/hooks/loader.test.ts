@@ -226,7 +226,7 @@ describe("hooksLoader", () => {
       expect(settings.hooks).toBeDefined();
     });
 
-    it("should set git.coAuthorByline to false in settings.json", async () => {
+    it("should set includeCoAuthoredBy to false in settings.json", async () => {
       const config: Config = { installType: "paid", installDir: tempDir };
 
       await hooksLoader.run({ config });
@@ -235,20 +235,17 @@ describe("hooksLoader", () => {
       const content = await fs.readFile(settingsPath, "utf-8");
       const settings = JSON.parse(content);
 
-      // Verify git.coAuthorByline is set to false
-      expect(settings.git).toBeDefined();
-      expect(settings.git.coAuthorByline).toBe(false);
+      // Verify includeCoAuthoredBy is set to false
+      expect(settings.includeCoAuthoredBy).toBe(false);
     });
 
-    it("should preserve existing git settings when adding coAuthorByline", async () => {
+    it("should preserve existing settings when adding includeCoAuthoredBy", async () => {
       const config: Config = { installType: "paid", installDir: tempDir };
 
-      // Create settings.json with existing git configuration
+      // Create settings.json with existing configuration
       const existingSettings = {
         $schema: "https://json.schemastore.org/claude-code-settings.json",
-        git: {
-          someOtherGitSetting: "value",
-        },
+        someOtherSetting: "value",
       };
       await fs.writeFile(
         settingsPath,
@@ -261,10 +258,10 @@ describe("hooksLoader", () => {
       const content = await fs.readFile(settingsPath, "utf-8");
       const settings = JSON.parse(content);
 
-      // Verify existing git settings are preserved
-      expect(settings.git.someOtherGitSetting).toBe("value");
-      // Verify coAuthorByline is added
-      expect(settings.git.coAuthorByline).toBe(false);
+      // Verify existing settings are preserved
+      expect(settings.someOtherSetting).toBe("value");
+      // Verify includeCoAuthoredBy is added
+      expect(settings.includeCoAuthoredBy).toBe(false);
     });
 
     it("should update hooks if already configured", async () => {
@@ -461,66 +458,45 @@ describe("hooksLoader", () => {
       expect(settings.hooks).toBeUndefined();
     });
 
-    it("should remove git.coAuthorByline setting during uninstall", async () => {
+    it("should remove includeCoAuthoredBy setting during uninstall", async () => {
       const config: Config = { installType: "paid", installDir: tempDir };
 
       // Install first
       await hooksLoader.run({ config });
 
-      // Verify git.coAuthorByline exists
+      // Verify includeCoAuthoredBy exists
       let content = await fs.readFile(settingsPath, "utf-8");
       let settings = JSON.parse(content);
-      expect(settings.git?.coAuthorByline).toBe(false);
+      expect(settings.includeCoAuthoredBy).toBe(false);
 
       // Uninstall
       await hooksLoader.uninstall({ config });
 
-      // Verify git.coAuthorByline is removed
+      // Verify includeCoAuthoredBy is removed
       content = await fs.readFile(settingsPath, "utf-8");
       settings = JSON.parse(content);
-      expect(settings.git?.coAuthorByline).toBeUndefined();
+      expect(settings.includeCoAuthoredBy).toBeUndefined();
     });
 
-    it("should preserve other git settings when removing coAuthorByline", async () => {
+    it("should preserve other settings when removing includeCoAuthoredBy", async () => {
       const config: Config = { installType: "paid", installDir: tempDir };
 
-      // Create settings with hooks and git config
+      // Create settings with hooks and other config
       await hooksLoader.run({ config });
 
       let content = await fs.readFile(settingsPath, "utf-8");
       let settings = JSON.parse(content);
-      settings.git.someOtherGitSetting = "preserved value";
+      settings.someOtherSetting = "preserved value";
       await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
 
       // Uninstall
       await hooksLoader.uninstall({ config });
 
-      // Verify other git settings are preserved
+      // Verify other settings are preserved
       content = await fs.readFile(settingsPath, "utf-8");
       settings = JSON.parse(content);
-      expect(settings.git?.someOtherGitSetting).toBe("preserved value");
-      expect(settings.git?.coAuthorByline).toBeUndefined();
-    });
-
-    it("should remove empty git object when no other git settings remain", async () => {
-      const config: Config = { installType: "paid", installDir: tempDir };
-
-      // Install (creates git.coAuthorByline)
-      await hooksLoader.run({ config });
-
-      // Verify git object exists with only coAuthorByline
-      let content = await fs.readFile(settingsPath, "utf-8");
-      let settings = JSON.parse(content);
-      expect(settings.git).toBeDefined();
-      expect(Object.keys(settings.git)).toEqual(["coAuthorByline"]);
-
-      // Uninstall
-      await hooksLoader.uninstall({ config });
-
-      // Verify git object is removed entirely
-      content = await fs.readFile(settingsPath, "utf-8");
-      settings = JSON.parse(content);
-      expect(settings.git).toBeUndefined();
+      expect(settings.someOtherSetting).toBe("preserved value");
+      expect(settings.includeCoAuthoredBy).toBeUndefined();
     });
 
     it("should handle missing settings.json gracefully", async () => {
@@ -605,16 +581,16 @@ describe("hooksLoader", () => {
       expect(result.errors?.[0]).toContain("Settings file not found");
     });
 
-    it("should return invalid when git.coAuthorByline is not set to false", async () => {
+    it("should return invalid when includeCoAuthoredBy is not set to false", async () => {
       const config: Config = { installType: "paid", installDir: tempDir };
 
       // Install hooks
       await hooksLoader.run({ config });
 
-      // Modify settings to remove git.coAuthorByline
+      // Modify settings to remove includeCoAuthoredBy
       const content = await fs.readFile(settingsPath, "utf-8");
       const settings = JSON.parse(content);
-      delete settings.git.coAuthorByline;
+      delete settings.includeCoAuthoredBy;
       await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
 
       // Validate
@@ -627,21 +603,21 @@ describe("hooksLoader", () => {
       expect(result.valid).toBe(false);
       expect(result.message).toContain("issues");
       expect(result.errors).not.toBeNull();
-      expect(result.errors?.some((e) => e.includes("git.coAuthorByline"))).toBe(
-        true,
-      );
+      expect(
+        result.errors?.some((e) => e.includes("includeCoAuthoredBy")),
+      ).toBe(true);
     });
 
-    it("should return invalid when git.coAuthorByline is set to true", async () => {
+    it("should return invalid when includeCoAuthoredBy is set to true", async () => {
       const config: Config = { installType: "paid", installDir: tempDir };
 
       // Install hooks
       await hooksLoader.run({ config });
 
-      // Modify settings to set git.coAuthorByline to true
+      // Modify settings to set includeCoAuthoredBy to true
       const content = await fs.readFile(settingsPath, "utf-8");
       const settings = JSON.parse(content);
-      settings.git.coAuthorByline = true;
+      settings.includeCoAuthoredBy = true;
       await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
 
       // Validate
@@ -654,9 +630,9 @@ describe("hooksLoader", () => {
       expect(result.valid).toBe(false);
       expect(result.message).toContain("issues");
       expect(result.errors).not.toBeNull();
-      expect(result.errors?.some((e) => e.includes("git.coAuthorByline"))).toBe(
-        true,
-      );
+      expect(
+        result.errors?.some((e) => e.includes("includeCoAuthoredBy")),
+      ).toBe(true);
     });
 
     it("should return invalid when hooks are not configured", async () => {

@@ -234,10 +234,7 @@ const configurePaidHooks = async (args: { config: Config }): Promise<void> => {
   }
 
   // Disable Claude Code's built-in co-author byline
-  settings.git = {
-    ...settings.git,
-    coAuthorByline: false,
-  };
+  settings.includeCoAuthoredBy = false;
 
   // Install all hooks for paid version
   // Note: summarizeNotificationHook must run before summarizeHook for proper ordering
@@ -316,10 +313,7 @@ const configureFreeHooks = async (args: { config: Config }): Promise<void> => {
   }
 
   // Disable Claude Code's built-in co-author byline
-  settings.git = {
-    ...settings.git,
-    coAuthorByline: false,
-  };
+  settings.includeCoAuthoredBy = false;
 
   // Install notification, autoupdate, nested-install-warning, and quick-switch hooks for free version
   const hooks = [
@@ -385,13 +379,9 @@ const removeHooks = async (args: { config: Config }): Promise<void> => {
       modified = true;
     }
 
-    // Remove git.coAuthorByline setting
-    if (settings.git?.coAuthorByline === false) {
-      delete settings.git.coAuthorByline;
-      // If git object is now empty, remove it entirely
-      if (Object.keys(settings.git).length === 0) {
-        delete settings.git;
-      }
+    // Remove includeCoAuthoredBy setting
+    if (settings.includeCoAuthoredBy === false) {
+      delete settings.includeCoAuthoredBy;
       modified = true;
     }
 
@@ -508,9 +498,9 @@ const validate = async (args: {
     );
   }
 
-  // Check git.coAuthorByline setting
-  if (settings.git?.coAuthorByline !== false) {
-    errors.push("git.coAuthorByline should be set to false in settings.json");
+  // Check includeCoAuthoredBy setting
+  if (settings.includeCoAuthoredBy !== false) {
+    errors.push("includeCoAuthoredBy should be set to false in settings.json");
     errors.push('Run "nori-ai install" to configure git settings');
   }
 
