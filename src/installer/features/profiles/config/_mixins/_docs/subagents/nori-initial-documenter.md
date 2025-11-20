@@ -22,7 +22,7 @@ model: inherit
 - Read through other docs files as needed while crafting your current docs file
 - Take time to ultrathink about how all these pieces connect and interact
 
-# Step 3: Create the docs.md Files
+# Step 3: Create the docs.md Files (Top-Down Pass)
 
 - Document business logic as it exists
 - Describe validation, transformation, error handling
@@ -35,6 +35,30 @@ model: inherit
 - Use filepath links extensively in the documentation
 - DO NOT evaluate if the logic is correct or optimal
 - DO NOT identify potential bugs or issues
+
+# Step 3.5: Bottom-Up Documentation Pass
+
+This step ensures comprehensive and accurate documentation by working from leaf folders upward.
+
+- Identify all directories containing source code using Glob and LS tools
+- For each leaf directory:
+  - If docs.md already exists, read it and verify accuracy
+  - Update or create docs.md focusing on the concrete implementation details
+  - Ensure the documentation accurately reflects what the code does
+- After documenting all leaves at a given depth level, move up one level to parent folders
+- For each parent directory:
+  - Read the docs.md files of ALL its child folders
+  - If docs.md already exists, read it
+  - Update or create docs.md ensuring it:
+    - Accurately describes how child folders relate to each other
+    - Provides higher-level architectural context
+    - Explains the purpose of grouping these children together
+    - Does NOT simply list children (follow anti-brittle guidelines)
+    - Maintains consistency with child folder documentation
+- Continue working upward through the directory tree until reaching the repository root
+- For each folder, focus on ACCURACY - if top-down documentation missed something or was inaccurate, correct it now
+
+**Key Principle**: The bottom-up pass is about ensuring accuracy and completeness. If you find documentation that doesn't match the actual code, update it to be accurate.
 
 # Step 4: Sync Remote docs.md Files
 
@@ -65,14 +89,24 @@ model: inherit
    - Trace method calls and data transformations
    - Note important algorithms or patterns
 
-2. **Document Chnages**
+2. **Document Using Two-Pass Approach**
+
+   - **Top-Down Pass (Step 3)**: Start from high-level understanding and work down
+     - Create docs.md files based on architectural context
+     - Focus on how components fit into the larger system
+     - Construct understanding of key abstractions, data paths, and architecture
+
+   - **Bottom-Up Pass (Step 3.5)**: Start from leaf directories and work up
+     - Verify and update docs.md files for accuracy
+     - Ensure leaf folder documentation captures concrete implementation details
+     - Ensure parent folder documentation accurately relates and contextualizes children
+     - Fix any inaccuracies discovered during bottom-up traversal
 
    - In each folder that contains source code, create a docs.md file. This should be recursive; subfolders with source code should also have a docs.md file.
-   - Construct an understanding of key abstractions, data paths, and architecture. Do NOT prioritize small implementation details.
-   - Modify the docs.md file using the Edit tool, incorporating information about the latest change.
-   - Focus on system invariants, state management, and important architectural decisions that place this particular folder within the larger codebase context.
-   - If relevant, document any tricky bugs that are necessary to explain otherwise-unclear parts of the code.
-   - DO NOT BE LAZY. Make the changes based on the information you have.
+   - Use the Write tool to create new docs.md files and the Edit tool to update existing ones
+   - Focus on system invariants, state management, and important architectural decisions that place this particular folder within the larger codebase context
+   - If relevant, document any tricky bugs that are necessary to explain otherwise-unclear parts of the code
+   - DO NOT BE LAZY. Make the changes based on the information you have
 
 3. **Pare It Back**
 
