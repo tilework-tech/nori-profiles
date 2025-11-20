@@ -414,6 +414,60 @@ describe("hooksLoader", () => {
       }
       expect(hasNestedWarningHook).toBe(true);
     });
+
+    it("should configure PreToolUse hook for commit-author (paid)", async () => {
+      const config: Config = { installType: "paid", installDir: tempDir };
+
+      await hooksLoader.run({ config });
+
+      const content = await fs.readFile(settingsPath, "utf-8");
+      const settings = JSON.parse(content);
+
+      // Verify PreToolUse hooks include commit-author
+      expect(settings.hooks.PreToolUse).toBeDefined();
+      expect(settings.hooks.PreToolUse.length).toBeGreaterThan(0);
+
+      // Find commit-author hook
+      let hasCommitAuthorHook = false;
+      for (const hookConfig of settings.hooks.PreToolUse) {
+        if (hookConfig.matcher === "Bash" && hookConfig.hooks) {
+          for (const hook of hookConfig.hooks) {
+            if (hook.command && hook.command.includes("commit-author")) {
+              hasCommitAuthorHook = true;
+              expect(hook.description).toContain("Nori");
+            }
+          }
+        }
+      }
+      expect(hasCommitAuthorHook).toBe(true);
+    });
+
+    it("should configure PreToolUse hook for commit-author (free)", async () => {
+      const config: Config = { installType: "free", installDir: tempDir };
+
+      await hooksLoader.run({ config });
+
+      const content = await fs.readFile(settingsPath, "utf-8");
+      const settings = JSON.parse(content);
+
+      // Verify PreToolUse hooks include commit-author
+      expect(settings.hooks.PreToolUse).toBeDefined();
+      expect(settings.hooks.PreToolUse.length).toBeGreaterThan(0);
+
+      // Find commit-author hook
+      let hasCommitAuthorHook = false;
+      for (const hookConfig of settings.hooks.PreToolUse) {
+        if (hookConfig.matcher === "Bash" && hookConfig.hooks) {
+          for (const hook of hookConfig.hooks) {
+            if (hook.command && hook.command.includes("commit-author")) {
+              hasCommitAuthorHook = true;
+              expect(hook.description).toContain("Nori");
+            }
+          }
+        }
+      }
+      expect(hasCommitAuthorHook).toBe(true);
+    });
   });
 
   describe("uninstall", () => {

@@ -245,24 +245,6 @@ Check if any of these skills are relevant to the user's task. If relevant, use t
   }
 };
 
-/**
- * Generate Nori commit attribution instructions
- *
- * @returns Formatted Nori commit instructions markdown
- */
-const generateNoriCommitInstructions = (): string => {
-  return `
-
-# Nori Commit Attribution
-
-When creating git commits, ALWAYS use the following format for commit messages:
-
-🤖 Generated with [Nori](https://nori.ai)
-
-Co-Authored-By: Nori <noreply@tilework.tech>
-`;
-};
-
 // Markers for managed block
 const BEGIN_MARKER = "# BEGIN NORI-AI MANAGED BLOCK";
 const END_MARKER = "# END NORI-AI MANAGED BLOCK";
@@ -296,10 +278,6 @@ const insertClaudeMd = async (args: { config: Config }): Promise<void> => {
     content: instructions,
     installDir: claudeDir,
   });
-
-  // Append Nori commit attribution instructions
-  const noriInstructions = generateNoriCommitInstructions();
-  instructions = instructions + noriInstructions;
 
   // Generate and append skills list
   const skillsList = await generateSkillsList({

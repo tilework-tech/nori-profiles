@@ -30,8 +30,9 @@ type HookConfig = {
     | "PreCompact"
     | "Notification"
     | "SessionStart"
-    | "UserPromptSubmit";
-  matcher: "" | "startup" | "auto" | "*";
+    | "UserPromptSubmit"
+    | "PreToolUse";
+  matcher: "" | "startup" | "auto" | "*" | "Bash";
   hooks: Array<{
     type: "command";
     command: string;
@@ -204,6 +205,31 @@ const quickSwitchHook: HookInterface = {
 };
 
 /**
+ * Commit-author hook - replace Claude attribution with Nori in git commits
+ */
+const commitAuthorHook: HookInterface = {
+  name: "commit-author",
+  description: "Replace Claude Code attribution with Nori in git commits",
+  install: async () => {
+    const scriptPath = path.join(HOOKS_CONFIG_DIR, "commit-author.js");
+    return [
+      {
+        event: "PreToolUse",
+        matcher: "Bash",
+        hooks: [
+          {
+            type: "command",
+            command: `node ${scriptPath}`,
+            description:
+              "Replace Claude Code co-author attribution with Nori in git commits",
+          },
+        ],
+      },
+    ];
+  },
+};
+
+/**
  * Configure hooks for automatic conversation memorization (paid version)
  * @param args - Configuration arguments
  * @param args.config - Runtime configuration
@@ -245,6 +271,7 @@ const configurePaidHooks = async (args: { config: Config }): Promise<void> => {
     nestedInstallWarningHook,
     notifyHook,
     quickSwitchHook,
+    commitAuthorHook,
   ];
   const hooksConfig: any = {};
 
@@ -315,12 +342,13 @@ const configureFreeHooks = async (args: { config: Config }): Promise<void> => {
   // Disable Claude Code's built-in co-author byline
   settings.includeCoAuthoredBy = false;
 
-  // Install notification, autoupdate, nested-install-warning, and quick-switch hooks for free version
+  // Install notification, autoupdate, nested-install-warning, quick-switch, and commit-author hooks for free version
   const hooks = [
     autoupdateHook,
     nestedInstallWarningHook,
     notifyHook,
     quickSwitchHook,
+    commitAuthorHook,
   ];
   const hooksConfig: any = {};
 
