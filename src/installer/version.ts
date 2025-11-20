@@ -5,8 +5,8 @@
  * before installing new versions.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { dirname, join } from "path";
 
 import { getConfigPath } from "@/installer/config.js";
 import { MCP_ROOT } from "@/installer/env.js";
@@ -112,5 +112,13 @@ export const saveInstalledVersion = (args: {
   installDir?: string | null;
 }): void => {
   const { version, installDir } = args;
-  writeFileSync(getVersionFilePath({ installDir }), version, "utf-8");
+  const versionFilePath = getVersionFilePath({ installDir });
+
+  // Ensure the directory exists
+  const dir = dirname(versionFilePath);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  writeFileSync(versionFilePath, version, "utf-8");
 };
