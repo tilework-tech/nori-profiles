@@ -41,9 +41,6 @@ model: inherit
 This step ensures comprehensive and accurate documentation by working from leaf folders upward.
 
 - Identify all directories containing source code using Glob and LS tools
-- Build a mental map of the directory hierarchy (which folders contain which subfolders)
-- Identify leaf directories: folders that contain source code files but have NO child folders with source code
-- Start with the deepest leaf directories first
 - For each leaf directory:
   - If docs.md already exists, read it and verify accuracy
   - Update or create docs.md focusing on the concrete implementation details
@@ -60,7 +57,6 @@ This step ensures comprehensive and accurate documentation by working from leaf 
     - Maintains consistency with child folder documentation
 - Continue working upward through the directory tree until reaching the repository root
 - For each folder, focus on ACCURACY - if top-down documentation missed something or was inaccurate, correct it now
-- Verify every folder with source code has a docs.md file
 
 **Key Principle**: The bottom-up pass is about ensuring accuracy and completeness. If you find documentation that doesn't match the actual code, update it to be accurate.
 
