@@ -10,6 +10,7 @@ import * as path from "path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import { profilesLoader } from "@/installer/features/profiles/loader.js";
+import { _testing as profilesTesting } from "@/installer/features/profiles/loader.js";
 
 import type { Config } from "@/installer/config.js";
 
@@ -30,6 +31,7 @@ vi.mock("@/installer/env.js", () => ({
 
 // Import loaders after mocking env
 import { slashCommandsLoader } from "./loader.js";
+import { _testing as profilesTesting } from "@/installer/features/profiles/loader.js";
 
 describe("slashCommandsLoader", () => {
   let tempDir: string;
@@ -68,7 +70,7 @@ describe("slashCommandsLoader", () => {
     it("should create commands directory and copy slash command files for free installation", async () => {
       const config: Config = { installType: "free", installDir: tempDir };
 
-      await slashCommandsLoader.run({ config });
+      await slashCommandsLoader.install({ config });
 
       // Verify commands directory exists
       const exists = await fs
@@ -86,7 +88,7 @@ describe("slashCommandsLoader", () => {
     it("should create commands directory and copy slash command files for paid installation", async () => {
       const config: Config = { installType: "paid", installDir: tempDir };
 
-      await slashCommandsLoader.run({ config });
+      await slashCommandsLoader.install({ config });
 
       // Verify commands directory exists
       const exists = await fs
@@ -105,13 +107,13 @@ describe("slashCommandsLoader", () => {
       const config: Config = { installType: "free", installDir: tempDir };
 
       // First installation
-      await slashCommandsLoader.run({ config });
+      await slashCommandsLoader.install({ config });
 
       const firstFiles = await fs.readdir(commandsDir);
       expect(firstFiles.length).toBeGreaterThan(0);
 
       // Second installation (update)
-      await slashCommandsLoader.run({ config });
+      await slashCommandsLoader.install({ config });
 
       const secondFiles = await fs.readdir(commandsDir);
       expect(secondFiles.length).toBeGreaterThan(0);
@@ -123,7 +125,7 @@ describe("slashCommandsLoader", () => {
       const config: Config = { installType: "free", installDir: tempDir };
 
       // Install first
-      await slashCommandsLoader.run({ config });
+      await slashCommandsLoader.install({ config });
 
       // Verify files exist
       let files = await fs.readdir(commandsDir);
@@ -163,7 +165,7 @@ describe("slashCommandsLoader", () => {
       const config: Config = { installType: "free", installDir: tempDir };
 
       // Install
-      await slashCommandsLoader.run({ config });
+      await slashCommandsLoader.install({ config });
 
       // Validate
       if (slashCommandsLoader.validate == null) {

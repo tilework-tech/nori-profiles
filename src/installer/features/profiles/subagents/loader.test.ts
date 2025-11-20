@@ -10,6 +10,7 @@ import * as path from "path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import { profilesLoader } from "@/installer/features/profiles/loader.js";
+import { _testing as profilesTesting } from "@/installer/features/profiles/loader.js";
 
 import type { Config } from "@/installer/config.js";
 
@@ -30,6 +31,7 @@ vi.mock("@/installer/env.js", () => ({
 
 // Import loaders after mocking env
 import { subagentsLoader } from "./loader.js";
+import { _testing as profilesTesting } from "@/installer/features/profiles/loader.js";
 
 describe("subagentsLoader", () => {
   let tempDir: string;
@@ -68,7 +70,7 @@ describe("subagentsLoader", () => {
     it("should create agents directory and copy subagent files for free installation", async () => {
       const config: Config = { installType: "free", installDir: tempDir };
 
-      await subagentsLoader.run({ config });
+      await subagentsLoader.install({ config });
 
       // Verify agents directory exists
       const exists = await fs
@@ -104,7 +106,7 @@ describe("subagentsLoader", () => {
       // Recompose profiles with paid mixin
       await profilesLoader.run({ config });
 
-      await subagentsLoader.run({ config });
+      await subagentsLoader.install({ config });
 
       // Verify agents directory exists
       const exists = await fs
@@ -140,7 +142,7 @@ describe("subagentsLoader", () => {
 
       // Free installation
       await profilesLoader.run({ config: freeConfig });
-      await subagentsLoader.run({ config: freeConfig });
+      await subagentsLoader.install({ config: freeConfig });
       const freeFiles = await fs.readdir(agentsDir);
       const freeCount = freeFiles.length;
 
@@ -149,7 +151,7 @@ describe("subagentsLoader", () => {
 
       // Paid installation
       await profilesLoader.run({ config: paidConfig });
-      await subagentsLoader.run({ config: paidConfig });
+      await subagentsLoader.install({ config: paidConfig });
       const paidFiles = await fs.readdir(agentsDir);
       const paidCount = paidFiles.length;
 
@@ -161,13 +163,13 @@ describe("subagentsLoader", () => {
       const config: Config = { installType: "free", installDir: tempDir };
 
       // First installation
-      await subagentsLoader.run({ config });
+      await subagentsLoader.install({ config });
 
       const firstFiles = await fs.readdir(agentsDir);
       expect(firstFiles.length).toBeGreaterThan(0);
 
       // Second installation (update)
-      await subagentsLoader.run({ config });
+      await subagentsLoader.install({ config });
 
       const secondFiles = await fs.readdir(agentsDir);
       expect(secondFiles.length).toBeGreaterThan(0);
@@ -179,7 +181,7 @@ describe("subagentsLoader", () => {
       const config: Config = { installType: "free", installDir: tempDir };
 
       // Install first
-      await subagentsLoader.run({ config });
+      await subagentsLoader.install({ config });
 
       // Verify files exist
       let files = await fs.readdir(agentsDir);
@@ -207,7 +209,7 @@ describe("subagentsLoader", () => {
       const config: Config = { installType: "paid", installDir: tempDir };
 
       // Install first
-      await subagentsLoader.run({ config });
+      await subagentsLoader.install({ config });
 
       // Verify files exist
       let files = await fs.readdir(agentsDir);
@@ -248,7 +250,7 @@ describe("subagentsLoader", () => {
       const config: Config = { installType: "free", installDir: tempDir };
 
       // Install
-      await subagentsLoader.run({ config });
+      await subagentsLoader.install({ config });
 
       // Validate
       if (subagentsLoader.validate == null) {
