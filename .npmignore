@@ -5,6 +5,7 @@ tsconfig.json
 # Development files
 node_modules/
 .nvmrc
+.worktrees/
 
 # Keep these for installation
 !bin/
