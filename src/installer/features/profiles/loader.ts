@@ -11,11 +11,11 @@ import {
   getClaudeProfilesDir,
   getClaudeSettingsFile,
 } from "@/installer/env.js";
-import { ProfileLoaderRegistry } from "@/installer/features/profiles/profileLoaderRegistry.js";
 import {
   readProfileMetadata,
   type ProfileMetadata,
-} from "@/installer/features/profiles/types.js";
+} from "@/installer/features/profiles/metadata.js";
+import { ProfileLoaderRegistry } from "@/installer/features/profiles/profileLoaderRegistry.js";
 import { success, info, warn } from "@/installer/logger.js";
 
 import type { Config } from "@/installer/config.js";
@@ -23,6 +23,7 @@ import type {
   Loader,
   ValidationResult,
 } from "@/installer/features/loaderRegistry.js";
+
 
 // Get directory of this loader file
 const __filename = fileURLToPath(import.meta.url);
