@@ -3,8 +3,10 @@
 /**
  * Nori Profiles CLI Router
  *
- * Routes commands to the appropriate installer/uninstaller.
+ * Routes commands to the appropriate installer/uninstaller using commander.js.
  */
+
+import { Command } from "commander";
 
 import { handshake } from "@/api/index.js";
 import {
@@ -13,43 +15,22 @@ import {
   validateDiskConfig,
 } from "@/installer/config.js";
 import { LoaderRegistry } from "@/installer/features/loaderRegistry.js";
-import { main as installMain } from "@/installer/install.js";
-import { error, success, info, warn } from "@/installer/logger.js";
+import { registerInstallCommand } from "@/installer/install.js";
+import { error, success, info } from "@/installer/logger.js";
 import { switchProfile } from "@/installer/profiles.js";
-import { main as uninstallMain } from "@/installer/uninstall.js";
+import { registerUninstallCommand } from "@/installer/uninstall.js";
+import { getCurrentPackageVersion } from "@/installer/version.js";
 import { normalizeInstallDir } from "@/utils/path.js";
-
-const showHelp = (): void => {
-  console.log("Usage: nori-ai [command] [options]");
-  console.log("");
-  console.log("Commands:");
-  console.log("  install              Install Nori Profiles (default)");
-  console.log("  uninstall            Uninstall Nori Profiles");
-  console.log(
-    "  check                Validate Nori installation and configuration",
-  );
-  console.log(
-    "  switch-profile <name> Switch to a different profile and reinstall",
-  );
-  console.log("  help                 Show this help message");
-  console.log("");
-  console.log("Options:");
-  console.log(
-    "  --install-dir <path> Install to custom directory (default: ~/.claude)",
-  );
-  console.log("  --non-interactive    Run without prompts");
-};
 
 /**
  * Run validation checks on Nori installation
- * This is a CLI entry point that accepts optional installDir
  * @param args - Configuration arguments
- * @param args.installDir - Custom installation directory (optional, defaults to cwd)
+ * @param args.installDir - Custom installation directory (optional)
  */
 const checkMain = async (args?: {
   installDir?: string | null;
 }): Promise<void> => {
-  // Normalize installDir at entry point
+  // Normalize installDir to a definite string value
   const installDir = normalizeInstallDir({ installDir: args?.installDir });
 
   console.log("");
@@ -128,7 +109,6 @@ const checkMain = async (args?: {
 
   if (hasErrors) {
     error({ message: "Validation completed with errors" });
-    warn({ message: 'Run "nori-ai install" to fix installation issues' });
     process.exit(1);
   } else {
     success({ message: "All validation checks passed!" });
@@ -137,79 +117,98 @@ const checkMain = async (args?: {
 };
 
 /**
- * Parse --install-dir <path> from args
- * @param args - Command line arguments
- *
- * @returns The install directory path or null
+ * Register the 'check' command with commander
+ * @param args - Configuration arguments
+ * @param args.program - Commander program instance
  */
-const parseInstallDir = (args: Array<string>): string | null => {
-  const index = args.indexOf("--install-dir");
-  if (index === -1 || index === args.length - 1) {
-    return null;
-  }
-  const rawPath = args[index + 1];
-  // Normalize the path (handles ~, relative paths, and .claude suffix)
-  return normalizeInstallDir({ installDir: rawPath });
-};
+const registerCheckCommand = (args: { program: Command }): void => {
+  const { program } = args;
 
-const main = async (): Promise<void> => {
-  const args = process.argv.slice(2);
-  const command = args[0] || "install";
+  program
+    .command("check")
+    .description("Validate Nori installation and configuration")
+    .action(async () => {
+      // Get global options from parent
+      const globalOpts = program.opts();
 
-  if (command === "help" || command === "--help" || command === "-h") {
-    showHelp();
-    return;
-  }
-
-  // Check for --non-interactive flag
-  const nonInteractive = args.includes("--non-interactive");
-
-  // Check for --install-dir flag
-  const installDir = parseInstallDir(args);
-
-  if (command === "install") {
-    await installMain({ nonInteractive, installDir });
-    return;
-  }
-
-  if (command === "uninstall") {
-    await uninstallMain({ nonInteractive, installDir });
-    return;
-  }
-
-  if (command === "check") {
-    await checkMain({ installDir });
-    return;
-  }
-
-  if (command === "switch-profile") {
-    const profileName = args[1];
-
-    if (!profileName) {
-      error({ message: "Profile name is required" });
-      console.log("Usage: nori-ai switch-profile <profile-name>");
-      process.exit(1);
-    }
-
-    // Switch to the profile
-    await switchProfile({ profileName, installDir });
-
-    // Run install in non-interactive mode with skipUninstall
-    // This preserves custom user profiles during the profile switch
-    info({ message: "Applying profile configuration..." });
-    await installMain({
-      nonInteractive: true,
-      skipUninstall: true,
-      installDir,
+      await checkMain({
+        installDir: globalOpts.installDir || null,
+      });
     });
-
-    return;
-  }
-
-  error({ message: `Unknown command: ${command}` });
-  console.log("");
-  showHelp();
-  process.exit(1);
 };
 
-main();
+/**
+ * Register the 'switch-profile' command with commander
+ * @param args - Configuration arguments
+ * @param args.program - Commander program instance
+ */
+const registerSwitchProfileCommand = (args: { program: Command }): void => {
+  const { program } = args;
+
+  program
+    .command("switch-profile <name>")
+    .description("Switch to a different profile and reinstall")
+    .action(async (name: string) => {
+      // Get global options from parent
+      const globalOpts = program.opts();
+
+      // Switch to the profile
+      await switchProfile({
+        profileName: name,
+        installDir: globalOpts.installDir || null,
+      });
+
+      // Run install in non-interactive mode with skipUninstall
+      // This preserves custom user profiles during the profile switch
+      info({ message: "Applying profile configuration..." });
+      const { main: installMain } = await import("@/installer/install.js");
+      await installMain({
+        nonInteractive: true,
+        skipUninstall: true,
+        installDir: globalOpts.installDir || null,
+      });
+    });
+};
+
+const program = new Command();
+const version = getCurrentPackageVersion() || "unknown";
+
+program
+  .name("nori-ai")
+  .version(version)
+  .description(`Nori Profiles - Claude Code Configuration Manager v${version}`)
+  .option(
+    "-d, --install-dir <path>",
+    "Custom installation directory (default: ~/.claude)",
+    (value) => normalizeInstallDir({ installDir: value }),
+  )
+  .option("-n, --non-interactive", "Run without interactive prompts")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  $ nori-ai install --install-dir ~/my-dir
+  $ nori-ai uninstall
+  $ nori-ai check
+  $ nori-ai switch-profile senior-swe
+  $ nori-ai --non-interactive install
+`,
+  );
+
+// Register all commands
+registerInstallCommand({ program });
+registerUninstallCommand({ program });
+registerCheckCommand({ program });
+registerSwitchProfileCommand({ program });
+
+// Default action when no command is provided
+program.action(async () => {
+  const opts = program.opts();
+  const { main: installMain } = await import("@/installer/install.js");
+  await installMain({
+    nonInteractive: opts.nonInteractive || null,
+    installDir: opts.installDir || null,
+  });
+});
+
+program.parse(process.argv);

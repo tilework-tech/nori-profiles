@@ -31,6 +31,8 @@ import {
   findAncestorInstallations,
 } from "@/utils/path.js";
 
+import type { Command } from "commander";
+
 /**
  * Prompt user for confirmation before uninstalling
  * @param args - Configuration arguments
@@ -436,7 +438,24 @@ export const main = async (args?: {
   }
 };
 
-// Run the uninstaller if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
-}
+/**
+ * Register the 'uninstall' command with commander
+ * @param args - Configuration arguments
+ * @param args.program - Commander program instance
+ */
+export const registerUninstallCommand = (args: { program: Command }): void => {
+  const { program } = args;
+
+  program
+    .command("uninstall")
+    .description("Uninstall Nori Profiles")
+    .action(async () => {
+      // Get global options from parent
+      const globalOpts = program.opts();
+
+      await main({
+        nonInteractive: globalOpts.nonInteractive || null,
+        installDir: globalOpts.installDir || null,
+      });
+    });
+};
