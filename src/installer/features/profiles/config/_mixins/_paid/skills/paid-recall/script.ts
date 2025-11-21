@@ -85,8 +85,8 @@ const formatArtifact = (args: {
    Created: ${new Date(artifact.createdAt).toLocaleString()}
    Updated: ${new Date(artifact.updatedAt).toLocaleString()}
    Content: ${
-     artifact.content.length > 200
-       ? artifact.content.substring(0, 200) + "..."
+     artifact.content.length > 500
+       ? artifact.content.substring(0, 500) + "..."
        : artifact.content
    }`;
 };

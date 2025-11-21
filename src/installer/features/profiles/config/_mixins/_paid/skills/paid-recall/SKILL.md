@@ -64,7 +64,7 @@ node {{skills_dir}}/recall/script.js --id="nori_abc123def456"
 
 ## Output
 
-**Search mode**: Returns artifact snippets (truncated to 200 chars) with metadata and search source breakdown (keyword, fuzzy, vector).
+**Search mode**: Returns artifact snippets (truncated to 500 chars) with metadata and search source breakdown (keyword, fuzzy, vector).
 
 **Fetch mode**: Returns complete artifact content without truncation, including full metadata (name, ID, type, repository, timestamps).
 
