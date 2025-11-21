@@ -28,7 +28,6 @@ import {
 } from "@/installer/config.js";
 import { getClaudeDir } from "@/installer/env.js";
 import { LoaderRegistry } from "@/installer/features/loaderRegistry.js";
-import { profilesLoader } from "@/installer/features/profiles/loader.js";
 import {
   error,
   success,
@@ -57,158 +56,123 @@ import type { Command } from "commander";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Source profiles directory (in the package)
+const SOURCE_PROFILES_DIR = path.join(
+  __dirname,
+  "features",
+  "profiles",
+  "config",
+);
+
 /**
- * Prompt user to select a profile
+ * Get available profiles from both source and installed locations
+ * Creates a superset of all available profiles
+ *
  * @param args - Configuration arguments
  * @param args.installDir - Installation directory
  *
- * @returns Selected profile name
+ * @returns Array of available profiles with names and descriptions
  */
-const promptForProfileSelection = async (args: {
+const getAvailableProfiles = async (args: {
   installDir: string;
-}): Promise<string> => {
+}): Promise<Array<{ name: string; description: string }>> => {
   const { installDir } = args;
+  const profilesMap = new Map<string, { name: string; description: string }>();
 
-  info({
-    message: wrapText({
-      text: "Please select a profile. Each profile contains a complete configuration with skills, subagents, and commands tailored for different use cases.",
-    }),
-  });
-  console.log();
+  // Read from source profiles directory (available profiles in package)
+  try {
+    const sourceEntries = await fs.readdir(SOURCE_PROFILES_DIR, {
+      withFileTypes: true,
+    });
 
-  // Read profiles from ~/.claude/profiles/ (populated by profiles loader)
-  const claudeDir = getClaudeDir({ installDir });
-  const profilesDir = path.join(claudeDir, "profiles");
-  const entries = await fs.readdir(profilesDir, { withFileTypes: true });
+    for (const entry of sourceEntries) {
+      // Skip internal directories and non-directories
+      if (!entry.isDirectory() || entry.name.startsWith("_")) {
+        continue;
+      }
 
-  // Get all directories that have a profile.json file
-  const profiles: Array<{ name: string; description: string }> = [];
-  for (const entry of entries) {
-    if (entry.isDirectory()) {
+      const profileJsonPath = path.join(
+        SOURCE_PROFILES_DIR,
+        entry.name,
+        "profile.json",
+      );
+
       try {
-        const profileJsonPath = path.join(
-          profilesDir,
-          entry.name,
-          "profile.json",
-        );
-        await fs.access(profileJsonPath);
-
-        // Read description from profile.json
         const content = await fs.readFile(profileJsonPath, "utf-8");
         const profileData = JSON.parse(content);
 
-        profiles.push({
+        profilesMap.set(entry.name, {
           name: entry.name,
           description: profileData.description || "No description available",
         });
       } catch {
-        // Skip directories without profile.json
+        // Skip if can't read profile.json
       }
     }
+  } catch {
+    // Source directory doesn't exist - shouldn't happen but handle gracefully
   }
 
-  // Display profiles with enhanced formatting
-  profiles.forEach((p, i) => {
-    const number = brightCyan({ text: `${i + 1}.` });
-    const name = boldWhite({ text: p.name });
-    const description = gray({ text: p.description });
-
-    console.log(`${number} ${name}`);
-    console.log(`   ${description}`);
-    console.log();
-  });
-
-  // Loop until valid selection
-  while (true) {
-    const response = await promptUser({
-      prompt: `Select a profile (1-${profiles.length}): `,
+  // Read from installed profiles directory (already installed profiles)
+  try {
+    const claudeDir = getClaudeDir({ installDir });
+    const installedProfilesDir = path.join(claudeDir, "profiles");
+    const installedEntries = await fs.readdir(installedProfilesDir, {
+      withFileTypes: true,
     });
 
-    const selectedIndex = parseInt(response) - 1;
-    if (selectedIndex >= 0 && selectedIndex < profiles.length) {
-      const selected = profiles[selectedIndex];
-      info({ message: `Loading "${selected.name}" profile...` });
-      return selected.name;
+    for (const entry of installedEntries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const profileJsonPath = path.join(
+        installedProfilesDir,
+        entry.name,
+        "profile.json",
+      );
+
+      try {
+        const content = await fs.readFile(profileJsonPath, "utf-8");
+        const profileData = JSON.parse(content);
+
+        // Add to map (will override source if same name exists)
+        profilesMap.set(entry.name, {
+          name: entry.name,
+          description: profileData.description || "No description available",
+        });
+      } catch {
+        // Skip if can't read profile.json
+      }
     }
-
-    // Invalid selection - show error and loop
-    error({
-      message: `Invalid selection "${response}". Please enter a number between 1 and ${profiles.length}.`,
-    });
-    console.log();
+  } catch {
+    // Installed profiles directory doesn't exist yet - that's fine
   }
+
+  return Array.from(profilesMap.values());
 };
 
 /**
- * Prompt user for authentication credentials
- * @returns Auth credentials or null for free tier
- */
-const promptForCredentials = async (): Promise<{
-  username: string;
-  password: string;
-  organizationUrl: string;
-} | null> => {
-  info({
-    message: wrapText({
-      text: "Do you have Nori credentials? You should have gotten an email from Josh or Amol if you are on the Nori paid plan. Type in your email address to set up Nori Paid, or hit enter to skip.",
-    }),
-  });
-  console.log();
-
-  const username = await promptUser({
-    prompt: "Email address (paid tier) or hit enter to skip (free tier): ",
-  });
-
-  if (!username || username.trim() === "") {
-    return null; // Free tier
-  }
-
-  const password = await promptUser({
-    prompt: "Enter your password: ",
-    hidden: true,
-  });
-
-  const orgUrl = await promptUser({
-    prompt:
-      "Enter your organization URL (e.g., http://localhost:3000 for local dev): ",
-  });
-
-  if (!password || !orgUrl) {
-    error({
-      message:
-        "Password and organization URL are required for backend installation",
-    });
-    process.exit(1);
-  }
-
-  return {
-    username: username.trim(),
-    password: password.trim(),
-    organizationUrl: orgUrl.trim(),
-  };
-};
-
-/**
- * Prompt user for authentication credentials (without profile selection)
- * @param args - Function arguments
- * @param args.existingDiskConfig - Existing disk config (if any)
+ * Generate prompt configuration by consolidating all prompt logic
+ * This function handles all user prompts and returns the complete configuration
  *
- * @returns Auth credentials and whether to use existing config
+ * @param args - Configuration arguments
+ * @param args.installDir - Installation directory
+ * @param args.existingDiskConfig - Existing disk configuration (if any)
+ *
+ * @returns Configuration and disk config to save, or null if user cancels
  */
-const promptForAuth = async (args: {
+export const generatePromptConfig = async (args: {
+  installDir: string;
   existingDiskConfig: DiskConfig | null;
 }): Promise<{
-  auth: {
-    username: string;
-    password: string;
-    organizationUrl: string;
-  } | null;
-  useExistingConfig: boolean;
-}> => {
-  const { existingDiskConfig } = args;
+  config: Config;
+  diskConfigToSave: DiskConfig;
+} | null> => {
+  const { installDir, existingDiskConfig } = args;
 
+  // Check if user wants to reuse existing config
   if (existingDiskConfig?.auth) {
-    // Display existing configuration
     info({
       message:
         "I found an existing Nori configuration file. Do you want to keep it?",
@@ -231,20 +195,59 @@ const promptForAuth = async (args: {
 
     if (useExisting.match(/^[Yy]$/)) {
       info({ message: "Using existing configuration..." });
-      return {
-        auth: existingDiskConfig.auth,
-        useExistingConfig: true,
-      };
+      const config = generateConfig({
+        diskConfig: existingDiskConfig,
+        installDir,
+      });
+      return { config, diskConfigToSave: existingDiskConfig };
     }
 
-    // User chose not to use existing config, continue with prompts
     console.log();
   }
 
   // Prompt for credentials
-  const auth = await promptForCredentials();
+  info({
+    message: wrapText({
+      text: "Do you have Nori credentials? You should have gotten an email from Josh or Amol if you are on the Nori paid plan. Type in your email address to set up Nori Paid, or hit enter to skip.",
+    }),
+  });
+  console.log();
 
-  if (auth != null) {
+  const username = await promptUser({
+    prompt: "Email address (paid tier) or hit enter to skip (free tier): ",
+  });
+
+  let auth: {
+    username: string;
+    password: string;
+    organizationUrl: string;
+  } | null = null;
+
+  if (username && username.trim() !== "") {
+    const password = await promptUser({
+      prompt: "Enter your password: ",
+      hidden: true,
+    });
+
+    const orgUrl = await promptUser({
+      prompt:
+        "Enter your organization URL (e.g., http://localhost:3000 for local dev): ",
+    });
+
+    if (!password || !orgUrl) {
+      error({
+        message:
+          "Password and organization URL are required for backend installation",
+      });
+      process.exit(1);
+    }
+
+    auth = {
+      username: username.trim(),
+      password: password.trim(),
+      organizationUrl: orgUrl.trim(),
+    };
+
     info({ message: "Installing with backend support..." });
     console.log();
   } else {
@@ -252,42 +255,55 @@ const promptForAuth = async (args: {
     console.log();
   }
 
-  return {
-    auth,
-    useExistingConfig: false,
-  };
-};
+  // Get available profiles from both source and installed locations
+  const profiles = await getAvailableProfiles({ installDir });
 
-/**
- * Complete the configuration by prompting for profile selection
- * @param args - Configuration arguments
- * @param args.auth - Auth credentials (already determined)
- * @param args.existingProfile - Existing profile selection (if reusing config)
- * @param args.installDir - Installation directory
- *
- * @returns The configuration and disk config to save
- */
-const completeConfig = async (args: {
-  auth: {
-    username: string;
-    password: string;
-    organizationUrl: string;
-  } | null;
-  existingProfile: { baseProfile: string } | null;
-  installDir: string;
-}): Promise<{
-  config: Config;
-  diskConfigToSave: DiskConfig;
-}> => {
-  const { auth, existingProfile, installDir } = args;
+  if (profiles.length === 0) {
+    error({ message: "No profiles found. This should not happen." });
+    process.exit(1);
+  }
 
-  // If we have an existing profile (from reusing existing config), use it
-  // Otherwise, prompt for selection
-  const selectedProfileName =
-    existingProfile?.baseProfile ||
-    (await promptForProfileSelection({ installDir }));
+  // Display profiles
+  info({
+    message: wrapText({
+      text: "Please select a profile. Each profile contains a complete configuration with skills, subagents, and commands tailored for different use cases.",
+    }),
+  });
+  console.log();
 
-  // Build disk config with auth + profile
+  profiles.forEach((p, i) => {
+    const number = brightCyan({ text: `${i + 1}.` });
+    const name = boldWhite({ text: p.name });
+    const description = gray({ text: p.description });
+
+    console.log(`${number} ${name}`);
+    console.log(`   ${description}`);
+    console.log();
+  });
+
+  // Loop until valid selection
+  let selectedProfileName: string;
+  while (true) {
+    const response = await promptUser({
+      prompt: `Select a profile (1-${profiles.length}): `,
+    });
+
+    const selectedIndex = parseInt(response) - 1;
+    if (selectedIndex >= 0 && selectedIndex < profiles.length) {
+      const selected = profiles[selectedIndex];
+      info({ message: `Loading "${selected.name}" profile...` });
+      selectedProfileName = selected.name;
+      break;
+    }
+
+    // Invalid selection - show error and loop
+    error({
+      message: `Invalid selection "${response}". Please enter a number between 1 and ${profiles.length}.`,
+    });
+    console.log();
+  }
+
+  // Build disk config
   const diskConfig: DiskConfig = {
     auth: auth || undefined,
     profile: {
@@ -302,50 +318,6 @@ const completeConfig = async (args: {
     },
     diskConfigToSave: diskConfig,
   };
-};
-
-/**
- * Generate prompt configuration by consolidating all prompt logic
- * This function handles all user prompts and returns the complete configuration
- * NOTE: Requires profiles to be populated first (call profilesLoader.run before this)
- *
- * @param args - Configuration arguments
- * @param args.installDir - Installation directory
- * @param args.existingDiskConfig - Existing disk configuration (if any)
- *
- * @returns Configuration and disk config to save, or null if user cancels
- */
-export const generatePromptConfig = async (args: {
-  installDir: string;
-  existingDiskConfig: DiskConfig | null;
-}): Promise<{
-  config: Config;
-  diskConfigToSave: DiskConfig;
-} | null> => {
-  const { installDir, existingDiskConfig } = args;
-
-  // Prompt for auth credentials first
-  const { auth, useExistingConfig } = await promptForAuth({
-    existingDiskConfig,
-  });
-
-  // If user chose to reuse existing config, return it
-  if (useExistingConfig && existingDiskConfig) {
-    const config = generateConfig({
-      diskConfig: existingDiskConfig,
-      installDir,
-    });
-    return { config, diskConfigToSave: existingDiskConfig };
-  }
-
-  // Otherwise, complete the configuration by prompting for profile
-  const result = await completeConfig({
-    auth,
-    existingProfile: null, // Force new selection
-    installDir,
-  });
-
-  return result;
 };
 
 /**
@@ -444,38 +416,18 @@ export const interactive = async (args?: {
     installDir: normalizedInstallDir,
   });
 
-  // Prompt for auth
-  const { auth, useExistingConfig } = await promptForAuth({
+  // Generate configuration through prompts
+  const promptResult = await generatePromptConfig({
+    installDir: normalizedInstallDir,
     existingDiskConfig,
   });
 
-  // Build temporary config for profile loader
-  const tempDiskConfig: DiskConfig = {
-    auth: auth || undefined,
-    profile: existingDiskConfig?.profile || null,
-    installDir: normalizedInstallDir,
-  };
-  let config = generateConfig({
-    diskConfig: tempDiskConfig,
-    installDir: normalizedInstallDir,
-  });
-
-  // Run profile loader
-  info({ message: "Loading available profiles..." });
-  await profilesLoader.run({ config });
-  console.log();
-
-  // Prompt for profile selection if not reusing config
-  let diskConfigToSave: DiskConfig | null = null;
-  if (!useExistingConfig) {
-    const result = await completeConfig({
-      auth,
-      existingProfile: null,
-      installDir: normalizedInstallDir,
-    });
-    config = result.config;
-    diskConfigToSave = result.diskConfigToSave;
+  if (promptResult == null) {
+    info({ message: "Installation cancelled." });
+    process.exit(0);
   }
+
+  const { config, diskConfigToSave } = promptResult;
 
   // Track installation start
   trackEvent({
@@ -496,30 +448,27 @@ export const interactive = async (args?: {
     writeFileSync(markerPath, currentVersion, "utf-8");
   }
 
-  // Save config if needed
-  if (diskConfigToSave != null) {
-    await saveDiskConfig({
-      username: diskConfigToSave.auth?.username || null,
-      password: diskConfigToSave.auth?.password || null,
-      organizationUrl: diskConfigToSave.auth?.organizationUrl || null,
-      profile: diskConfigToSave.profile || null,
-      installDir: normalizedInstallDir,
-    });
-    success({
-      message: `Configuration saved to ${getConfigPath({ installDir: normalizedInstallDir })}`,
-    });
-    console.log();
-  }
+  // Save config
+  await saveDiskConfig({
+    username: diskConfigToSave.auth?.username || null,
+    password: diskConfigToSave.auth?.password || null,
+    organizationUrl: diskConfigToSave.auth?.organizationUrl || null,
+    profile: diskConfigToSave.profile || null,
+    installDir: normalizedInstallDir,
+  });
+  success({
+    message: `Configuration saved to ${getConfigPath({ installDir: normalizedInstallDir })}`,
+  });
+  console.log();
 
-  // Run remaining loaders
+  // Run all loaders (including profiles)
   const registry = LoaderRegistry.getInstance();
   const loaders = registry.getAll();
 
   info({ message: "Installing features..." });
   console.log();
 
-  const remainingLoaders = loaders.filter((l) => l.name !== "profiles");
-  for (const loader of remainingLoaders) {
+  for (const loader of loaders) {
     await loader.run({ config });
   }
 
@@ -674,11 +623,6 @@ export const noninteractive = async (args?: {
     };
   }
 
-  // Run profile loader
-  info({ message: "Loading available profiles..." });
-  await profilesLoader.run({ config });
-  console.log();
-
   // Track installation start
   trackEvent({
     eventName: "plugin_install_started",
@@ -698,15 +642,14 @@ export const noninteractive = async (args?: {
     writeFileSync(markerPath, currentVersion, "utf-8");
   }
 
-  // Run remaining loaders
+  // Run all loaders
   const registry = LoaderRegistry.getInstance();
   const loaders = registry.getAll();
 
   info({ message: "Installing features..." });
   console.log();
 
-  const remainingLoaders = loaders.filter((l) => l.name !== "profiles");
-  for (const loader of remainingLoaders) {
+  for (const loader of loaders) {
     await loader.run({ config });
   }
 
