@@ -28,11 +28,12 @@ Track your tool usage and prioritize the most impactful queries. Stop when you h
 ## Phase 1: Initial Search (3-5 tool calls)
 
 1. **Check for docs.md files** in relevant directories related to my question
-2. <required>You MUST use the **Recall** skill ({{skills_dir}}/recall/SKILL.md) at least one time.</required>
-3. **Start with the most specific query** directly related to my question
-4. **Evaluate results**: Do they answer the question? If yes, stop and report.
-5. **If gaps remain**: Try 1-2 alternative phrasings or related terms
-6. **Quick assessment**: Can you answer my question now? If yes, proceed to reporting.
+2. <required>You MUST use the **Recall** skill ({{skills_dir}}/recall/SKILL.md) at least one time to search for relevant articles.</required>
+3. <required>**Fetch complete articles**: You MUST use the **Recall** skill with `--id` parameter at least THREE times to fetch complete article content. You may choose whichever articles you think are most valuable.</required>
+4. **Start with the most specific query** directly related to my question
+5. **Evaluate results**: Do they answer the question? If yes, stop and report.
+6. **If gaps remain**: Try 1-2 alternative phrasings or related terms
+8. **Quick assessment**: Can you answer my question now? If yes, proceed to reporting.
 
 ## Phase 2: Targeted Expansion (3-5 tool calls, only if needed)
 
@@ -41,7 +42,7 @@ Only proceed if Phase 1 left critical gaps:
 1. **Follow specific references** found in Phase 1 (file names, function names, concepts)
 2. **Check related code** using Read/Grep if knowledge base pointed to specific files
 3. **External lookup**: Use WebFetch only if specific URLs were mentioned and are critical
-4. **Dig into the team knowledge base** using the **Recall** skill again.
+4. **Search again**: Use the **Recall** skill with different queries if needed.
 
 ## Phase 3: Final Verification (2-3 tool calls, only if needed)
 
