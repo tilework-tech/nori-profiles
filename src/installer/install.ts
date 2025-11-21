@@ -51,6 +51,8 @@ import {
   findAncestorInstallations,
 } from "@/utils/path.js";
 
+import type { Command } from "commander";
+
 // Get directory of this installer file for profile loading
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -584,6 +586,28 @@ export const main = async (args?: {
     error({ message: err.message });
     process.exit(1);
   }
+};
+
+/**
+ * Register the 'install' command with commander
+ * @param args - Configuration arguments
+ * @param args.program - Commander program instance
+ */
+export const registerInstallCommand = (args: { program: Command }): void => {
+  const { program } = args;
+
+  program
+    .command("install")
+    .description("Install Nori Profiles (default)")
+    .action(async () => {
+      // Get global options from parent
+      const globalOpts = program.opts();
+
+      await main({
+        nonInteractive: globalOpts.nonInteractive || null,
+        installDir: globalOpts.installDir || null,
+      });
+    });
 };
 
 // Run the installer if executed directly
