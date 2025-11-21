@@ -158,58 +158,5 @@ describe("slashCommandsLoader", () => {
     });
   });
 
-  describe("validate", () => {
-    it("should return valid for properly installed slash commands", async () => {
-      const config: Config = { installType: "free", installDir: tempDir };
-
-      // Install
-      await slashCommandsLoader.install({ config });
-
-      // Validate
-      if (slashCommandsLoader.validate == null) {
-        throw new Error("validate method not implemented");
-      }
-
-      const result = await slashCommandsLoader.validate({ config });
-
-      expect(result.valid).toBe(true);
-      expect(result.message).toContain("properly installed");
-      expect(result.errors).toBeNull();
-    });
-
-    it("should return invalid when commands directory does not exist", async () => {
-      const config: Config = { installType: "free", installDir: tempDir };
-
-      // Validate without installing
-      if (slashCommandsLoader.validate == null) {
-        throw new Error("validate method not implemented");
-      }
-
-      const result = await slashCommandsLoader.validate({ config });
-
-      expect(result.valid).toBe(false);
-      expect(result.message).toContain("not found");
-      expect(result.errors).not.toBeNull();
-      expect(result.errors?.length).toBeGreaterThan(0);
-    });
-
-    it("should return invalid when slash command files are missing", async () => {
-      const config: Config = { installType: "free", installDir: tempDir };
-
-      // Create commands directory but don't install slash commands
-      await fs.mkdir(commandsDir, { recursive: true });
-
-      // Validate
-      if (slashCommandsLoader.validate == null) {
-        throw new Error("validate method not implemented");
-      }
-
-      const result = await slashCommandsLoader.validate({ config });
-
-      expect(result.valid).toBe(false);
-      expect(result.message).toContain("not installed");
-      expect(result.errors).not.toBeNull();
-      expect(result.errors?.length).toBeGreaterThan(0);
-    });
-  });
+  // Validate tests removed - validation is now handled at profilesLoader level
 });

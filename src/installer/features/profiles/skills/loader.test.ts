@@ -160,41 +160,8 @@ describe("skillsLoader", () => {
     });
   });
 
-  describe("validate", () => {
-    it("should return valid for properly installed skills", async () => {
-      const config: Config = { installType: "free", installDir: tempDir };
-
-      // Install
-      await skillsLoader.install({ config });
-
-      // Validate
-      if (skillsLoader.validate == null) {
-        throw new Error("validate method not implemented");
-      }
-
-      const result = await skillsLoader.validate({ config });
-
-      expect(result.valid).toBe(true);
-      expect(result.message).toContain("properly installed");
-      expect(result.errors).toBeNull();
-    });
-
-    it("should return invalid when skills directory does not exist", async () => {
-      const config: Config = { installType: "free", installDir: tempDir };
-
-      // Validate without installing
-      if (skillsLoader.validate == null) {
-        throw new Error("validate method not implemented");
-      }
-
-      const result = await skillsLoader.validate({ config });
-
-      expect(result.valid).toBe(false);
-      expect(result.message).toContain("not found");
-      expect(result.errors).not.toBeNull();
-      expect(result.errors?.length).toBeGreaterThan(0);
-    });
-  });
+  // Validate tests removed - no longer relevant as skills are now installed via profilesLoader
+  // Validation is tested at the profilesLoader level
 
   describe("updating-noridocs skill", () => {
     it("should include updating-noridocs skill", async () => {

@@ -243,58 +243,5 @@ describe("subagentsLoader", () => {
     });
   });
 
-  describe("validate", () => {
-    it("should return valid for properly installed subagents", async () => {
-      const config: Config = { installType: "free", installDir: tempDir };
-
-      // Install
-      await subagentsLoader.install({ config });
-
-      // Validate
-      if (subagentsLoader.validate == null) {
-        throw new Error("validate method not implemented");
-      }
-
-      const result = await subagentsLoader.validate({ config });
-
-      expect(result.valid).toBe(true);
-      expect(result.message).toContain("properly installed");
-      expect(result.errors).toBeNull();
-    });
-
-    it("should return invalid when agents directory does not exist", async () => {
-      const config: Config = { installType: "free", installDir: tempDir };
-
-      // Validate without installing
-      if (subagentsLoader.validate == null) {
-        throw new Error("validate method not implemented");
-      }
-
-      const result = await subagentsLoader.validate({ config });
-
-      expect(result.valid).toBe(false);
-      expect(result.message).toContain("not found");
-      expect(result.errors).not.toBeNull();
-      expect(result.errors?.length).toBeGreaterThan(0);
-    });
-
-    it("should return invalid when subagent files are missing", async () => {
-      const config: Config = { installType: "free", installDir: tempDir };
-
-      // Create agents directory but don't install subagents
-      await fs.mkdir(agentsDir, { recursive: true });
-
-      // Validate
-      if (subagentsLoader.validate == null) {
-        throw new Error("validate method not implemented");
-      }
-
-      const result = await subagentsLoader.validate({ config });
-
-      expect(result.valid).toBe(false);
-      expect(result.message).toContain("not installed");
-      expect(result.errors).not.toBeNull();
-      expect(result.errors?.length).toBeGreaterThan(0);
-    });
-  });
+  // Validate tests removed - validation is now handled at profilesLoader level
 });

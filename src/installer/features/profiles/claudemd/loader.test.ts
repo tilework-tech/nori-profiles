@@ -273,63 +273,7 @@ More user instructions.
     });
   });
 
-  describe("validate", () => {
-    it("should return valid for properly installed CLAUDE.md", async () => {
-      const config: Config = { installType: "free", installDir: tempDir };
-
-      // Install
-      await claudeMdLoader.install({ config });
-
-      // Validate
-      if (claudeMdLoader.validate == null) {
-        throw new Error("validate method not implemented");
-      }
-
-      const result = await claudeMdLoader.validate({ config });
-
-      expect(result.valid).toBe(true);
-      expect(result.message).toContain("properly configured");
-      expect(result.errors).toBeNull();
-    });
-
-    it("should return invalid when CLAUDE.md does not exist", async () => {
-      const config: Config = { installType: "free", installDir: tempDir };
-
-      // Validate without installing
-      if (claudeMdLoader.validate == null) {
-        throw new Error("validate method not implemented");
-      }
-
-      const result = await claudeMdLoader.validate({ config });
-
-      expect(result.valid).toBe(false);
-      expect(result.message).toContain("not found");
-      expect(result.errors).not.toBeNull();
-      expect(result.errors?.length).toBeGreaterThan(0);
-      expect(result.errors?.[0]).toContain("CLAUDE.md not found");
-    });
-
-    it("should return invalid when managed block is missing", async () => {
-      const config: Config = { installType: "free", installDir: tempDir };
-
-      // Create CLAUDE.md without managed block
-      const userContent = "# User Instructions\n\nNo nori content here.\n";
-      await fs.writeFile(claudeMdPath, userContent);
-
-      // Validate
-      if (claudeMdLoader.validate == null) {
-        throw new Error("validate method not implemented");
-      }
-
-      const result = await claudeMdLoader.validate({ config });
-
-      expect(result.valid).toBe(false);
-      expect(result.message).toContain("managed block missing");
-      expect(result.errors).not.toBeNull();
-      expect(result.errors?.length).toBeGreaterThan(0);
-      expect(result.errors?.[0]).toContain("Nori managed block not found");
-    });
-  });
+  // Validate tests removed - validation is now handled at profilesLoader level
 
   describe("profile-based CLAUDE.md loading", () => {
     it("should load CLAUDE.md from selected profile", async () => {
