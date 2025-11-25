@@ -116,6 +116,60 @@ describe("slashCommandsLoader", () => {
       const secondFiles = await fs.readdir(commandsDir);
       expect(secondFiles.length).toBeGreaterThan(0);
     });
+
+    it("should install nori-install-location.md slash command", async () => {
+      const config: Config = { installType: "free", installDir: tempDir };
+
+      await slashCommandsLoader.install({ config });
+
+      // Verify nori-install-location.md exists
+      const installLocationPath = path.join(
+        commandsDir,
+        "nori-install-location.md",
+      );
+      const exists = await fs
+        .access(installLocationPath)
+        .then(() => true)
+        .catch(() => false);
+
+      expect(exists).toBe(true);
+
+      // Verify file has content
+      const content = await fs.readFile(installLocationPath, "utf-8");
+      expect(content).toContain("description:");
+      expect(content.length).toBeGreaterThan(0);
+    });
+
+    it("should include allowed-tools in nori-install-location.md for auto-execute permission", async () => {
+      const config: Config = { installType: "free", installDir: tempDir };
+
+      await slashCommandsLoader.install({ config });
+
+      const installLocationPath = path.join(
+        commandsDir,
+        "nori-install-location.md",
+      );
+      const content = await fs.readFile(installLocationPath, "utf-8");
+
+      // Slash commands using !`command` syntax require allowed-tools frontmatter
+      // to grant Claude Code permission to execute the command
+      expect(content).toContain("allowed-tools:");
+      expect(content).toContain("Bash(npx nori-ai");
+    });
+
+    it("should include allowed-tools in nori-debug.md for auto-execute permission", async () => {
+      const config: Config = { installType: "free", installDir: tempDir };
+
+      await slashCommandsLoader.install({ config });
+
+      const debugPath = path.join(commandsDir, "nori-debug.md");
+      const content = await fs.readFile(debugPath, "utf-8");
+
+      // Slash commands using !`command` syntax require allowed-tools frontmatter
+      // to grant Claude Code permission to execute the command
+      expect(content).toContain("allowed-tools:");
+      expect(content).toContain("Bash(npx nori-ai");
+    });
   });
 
   describe("uninstall", () => {
