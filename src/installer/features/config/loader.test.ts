@@ -43,6 +43,60 @@ describe("configLoader", () => {
       expect(fileContents.installDir).toBe(tempDir);
       expect(fileContents.profile).toEqual({ baseProfile: "senior-swe" });
     });
+
+    it("should include sendSessionTranscript: enabled for paid installation", async () => {
+      const config: Config = {
+        installType: "paid",
+        installDir: tempDir,
+        profile: { baseProfile: "senior-swe" },
+        auth: {
+          username: "test@example.com",
+          password: "testpass",
+          organizationUrl: "https://example.com",
+        },
+        sendSessionTranscript: "enabled",
+      };
+
+      await configLoader.run({ config });
+
+      const configFile = getConfigPath({ installDir: tempDir });
+      const fileContents = JSON.parse(fs.readFileSync(configFile, "utf-8"));
+      expect(fileContents.sendSessionTranscript).toBe("enabled");
+    });
+
+    it("should NOT include sendSessionTranscript for free installation", async () => {
+      const config: Config = {
+        installType: "free",
+        installDir: tempDir,
+        profile: { baseProfile: "senior-swe" },
+      };
+
+      await configLoader.run({ config });
+
+      const configFile = getConfigPath({ installDir: tempDir });
+      const fileContents = JSON.parse(fs.readFileSync(configFile, "utf-8"));
+      expect(fileContents.sendSessionTranscript).toBeUndefined();
+    });
+
+    it("should preserve existing sendSessionTranscript preference for paid installation", async () => {
+      const config: Config = {
+        installType: "paid",
+        installDir: tempDir,
+        profile: { baseProfile: "senior-swe" },
+        auth: {
+          username: "test@example.com",
+          password: "testpass",
+          organizationUrl: "https://example.com",
+        },
+        sendSessionTranscript: "disabled",
+      };
+
+      await configLoader.run({ config });
+
+      const configFile = getConfigPath({ installDir: tempDir });
+      const fileContents = JSON.parse(fs.readFileSync(configFile, "utf-8"));
+      expect(fileContents.sendSessionTranscript).toBe("disabled");
+    });
   });
 
   describe("uninstall", () => {

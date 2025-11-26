@@ -298,6 +298,51 @@ describe("config with profile-based system", () => {
         baseProfile: "senior-swe",
       });
     });
+
+    it("should set sendSessionTranscript to 'enabled' for paid users by default", () => {
+      const diskConfig: DiskConfig = {
+        auth: {
+          username: "test@example.com",
+          password: "password123",
+          organizationUrl: "https://example.com",
+        },
+        profile: { baseProfile: "senior-swe" },
+        installDir: tempDir,
+      };
+
+      const config = generateConfig({ diskConfig, installDir: tempDir });
+
+      expect(config.sendSessionTranscript).toBe("enabled");
+    });
+
+    it("should preserve existing sendSessionTranscript preference for paid users", () => {
+      const diskConfig: DiskConfig = {
+        auth: {
+          username: "test@example.com",
+          password: "password123",
+          organizationUrl: "https://example.com",
+        },
+        profile: { baseProfile: "senior-swe" },
+        sendSessionTranscript: "disabled",
+        installDir: tempDir,
+      };
+
+      const config = generateConfig({ diskConfig, installDir: tempDir });
+
+      expect(config.sendSessionTranscript).toBe("disabled");
+    });
+
+    it("should set sendSessionTranscript to null for free users", () => {
+      const diskConfig: DiskConfig = {
+        auth: null,
+        profile: { baseProfile: "senior-swe" },
+        installDir: tempDir,
+      };
+
+      const config = generateConfig({ diskConfig, installDir: tempDir });
+
+      expect(config.sendSessionTranscript).toBeNull();
+    });
   });
 
   describe("installDir configuration", () => {

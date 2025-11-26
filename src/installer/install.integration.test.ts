@@ -231,6 +231,10 @@ describe("install integration test", () => {
       fs.existsSync(path.join(subagentsDir, "nori-knowledge-researcher.md")),
     ).toBe(true);
 
+    // STEP 4: Verify sendSessionTranscript is enabled for paid users
+    const finalConfig = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
+    expect(finalConfig.sendSessionTranscript).toBe("enabled");
+
     // Clean up
     try {
       fs.unlinkSync(CONFIG_PATH);
@@ -276,6 +280,10 @@ describe("install integration test", () => {
     expect(
       fs.existsSync(path.join(subagentsDir, "nori-knowledge-researcher.md")),
     ).toBe(false);
+
+    // STEP 4: Verify sendSessionTranscript is NOT included for free users
+    const finalConfig = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
+    expect(finalConfig.sendSessionTranscript).toBeUndefined();
 
     // Clean up
     try {

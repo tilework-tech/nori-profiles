@@ -41,6 +41,7 @@ export type Config = {
   profile?: {
     baseProfile: string;
   } | null;
+  sendSessionTranscript?: "enabled" | "disabled" | null;
   installDir: string;
 };
 
@@ -241,10 +242,18 @@ export const generateConfig = (args: {
   // Use profile from diskConfig, or default if not present
   const profile = diskConfig?.profile || getDefaultProfile();
 
+  // For paid installs, default sendSessionTranscript to "enabled" if not set
+  // For free installs, set to null (won't be saved)
+  let sendSessionTranscript: "enabled" | "disabled" | null = null;
+  if (installType === "paid") {
+    sendSessionTranscript = diskConfig?.sendSessionTranscript ?? "enabled";
+  }
+
   return {
     installType,
     auth: diskConfig?.auth || null,
     profile,
+    sendSessionTranscript,
     installDir,
   };
 };

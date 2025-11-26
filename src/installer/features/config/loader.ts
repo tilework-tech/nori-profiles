@@ -39,7 +39,7 @@ const installConfig = async (args: { config: Config }): Promise<void> => {
     password,
     organizationUrl,
     profile: config.profile ?? null,
-    sendSessionTranscript: existingConfig?.sendSessionTranscript,
+    sendSessionTranscript: config.sendSessionTranscript ?? null,
     autoupdate: existingConfig?.autoupdate,
     installDir: config.installDir,
   });

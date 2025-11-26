@@ -20,9 +20,7 @@ import {
 } from "@/installer/asciiArt.js";
 import {
   loadDiskConfig,
-  saveDiskConfig,
   generateConfig,
-  getConfigPath,
   type DiskConfig,
   type Config,
 } from "@/installer/config.js";
@@ -149,15 +147,12 @@ const getAvailableProfiles = async (args: {
  * @param args.installDir - Installation directory
  * @param args.existingDiskConfig - Existing disk configuration (if any)
  *
- * @returns Configuration and disk config to save, or null if user cancels
+ * @returns Runtime configuration, or null if user cancels
  */
 export const generatePromptConfig = async (args: {
   installDir: string;
   existingDiskConfig: DiskConfig | null;
-}): Promise<{
-  config: Config;
-  diskConfigToSave: DiskConfig;
-} | null> => {
+}): Promise<Config | null> => {
   const { installDir, existingDiskConfig } = args;
 
   // Check if user wants to reuse existing config
@@ -184,11 +179,10 @@ export const generatePromptConfig = async (args: {
 
     if (useExisting.match(/^[Yy]$/)) {
       info({ message: "Using existing configuration..." });
-      const config = generateConfig({
+      return generateConfig({
         diskConfig: existingDiskConfig,
         installDir,
       });
-      return { config, diskConfigToSave: existingDiskConfig };
     }
 
     console.log();
@@ -301,12 +295,7 @@ export const generatePromptConfig = async (args: {
     installDir,
   };
 
-  return {
-    config: {
-      ...generateConfig({ diskConfig, installDir }),
-    },
-    diskConfigToSave: diskConfig,
-  };
+  return generateConfig({ diskConfig, installDir });
 };
 
 /**
@@ -410,17 +399,15 @@ export const interactive = async (args?: {
   });
 
   // Generate configuration through prompts
-  const promptResult = await generatePromptConfig({
+  const config = await generatePromptConfig({
     installDir: normalizedInstallDir,
     existingDiskConfig,
   });
 
-  if (promptResult == null) {
+  if (config == null) {
     info({ message: "Installation cancelled." });
     process.exit(0);
   }
-
-  const { config, diskConfigToSave } = promptResult;
 
   // Track installation start
   trackEvent({
@@ -440,21 +427,6 @@ export const interactive = async (args?: {
     );
     writeFileSync(markerPath, currentVersion, "utf-8");
   }
-
-  // Save config
-  await saveDiskConfig({
-    username: diskConfigToSave.auth?.username || null,
-    password: diskConfigToSave.auth?.password || null,
-    organizationUrl: diskConfigToSave.auth?.organizationUrl || null,
-    profile: diskConfigToSave.profile || null,
-    sendSessionTranscript: diskConfigToSave.sendSessionTranscript,
-    autoupdate: diskConfigToSave.autoupdate,
-    installDir: normalizedInstallDir,
-  });
-  success({
-    message: `Configuration saved to ${getConfigPath({ installDir: normalizedInstallDir })}`,
-  });
-  console.log();
 
   // Run all loaders (including profiles)
   const registry = LoaderRegistry.getInstance();

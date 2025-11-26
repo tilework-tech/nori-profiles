@@ -93,7 +93,7 @@ export const switchProfile = async (args: {
     profile: {
       baseProfile: profileName,
     },
-    sendSessionTranscript: currentConfig?.sendSessionTranscript,
+    sendSessionTranscript: currentConfig?.sendSessionTranscript ?? null,
     autoupdate: currentConfig?.autoupdate,
     installDir,
   });
