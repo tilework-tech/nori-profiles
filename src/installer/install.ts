@@ -20,9 +20,7 @@ import {
 } from "@/installer/asciiArt.js";
 import {
   loadDiskConfig,
-  saveDiskConfig,
   generateConfig,
-  getConfigPath,
   type DiskConfig,
   type Config,
 } from "@/installer/config.js";
@@ -420,7 +418,7 @@ export const interactive = async (args?: {
     process.exit(0);
   }
 
-  const { config, diskConfigToSave } = promptResult;
+  const { config } = promptResult;
 
   // Track installation start
   trackEvent({
@@ -441,20 +439,8 @@ export const interactive = async (args?: {
     writeFileSync(markerPath, currentVersion, "utf-8");
   }
 
-  // Save config
-  await saveDiskConfig({
-    username: diskConfigToSave.auth?.username || null,
-    password: diskConfigToSave.auth?.password || null,
-    organizationUrl: diskConfigToSave.auth?.organizationUrl || null,
-    profile: diskConfigToSave.profile || null,
-    installDir: normalizedInstallDir,
-  });
-  success({
-    message: `Configuration saved to ${getConfigPath({ installDir: normalizedInstallDir })}`,
-  });
-  console.log();
-
   // Run all loaders (including profiles)
+  // Note: configLoader will save the config to disk
   const registry = LoaderRegistry.getInstance();
   const loaders = registry.getAll();
 

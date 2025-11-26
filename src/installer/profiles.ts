@@ -85,7 +85,7 @@ export const switchProfile = async (args: {
   // 2. Load current disk config
   const currentConfig = await loadDiskConfig({ installDir });
 
-  // 3. Preserve auth, update profile
+  // 3. Preserve auth and sendSessionTranscript, update profile
   await saveDiskConfig({
     username: currentConfig?.auth?.username || null,
     password: currentConfig?.auth?.password || null,
@@ -93,6 +93,7 @@ export const switchProfile = async (args: {
     profile: {
       baseProfile: profileName,
     },
+    sendSessionTranscript: currentConfig?.sendSessionTranscript ?? null,
     installDir,
   });
 
