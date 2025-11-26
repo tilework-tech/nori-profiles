@@ -21,6 +21,14 @@ export default defineConfig({
     reporters: ["dot"],
     silent: true,
     exclude: ["node_modules", "dist", "build", ".worktrees/**"],
+    // Ensure tests that depend on build artifacts run sequentially with build.test.ts
+    // This prevents race conditions where cli.test.ts runs while build.test.ts is rebuilding
+    sequence: {
+      hooks: "list",
+    },
+    // Run build-dependent tests after other tests to avoid race conditions
+    // cli.test.ts depends on build/src/installer/cli.js which build.test.ts rebuilds
+    fileParallelism: false,
   },
   resolve: {
     alias: {
