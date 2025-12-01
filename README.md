@@ -52,10 +52,10 @@ Define precise scopes of behavior for your development tasks. Your preferences f
 
 **Ask Claude Code to build it with you:**
 
-Try a prompt like:
+Run
 
 ```
-"Help me create a custom Nori profile. I want to discuss my workflow preferences."
+/nori-create-profile
 ```
 
 Claude will guide you through:
