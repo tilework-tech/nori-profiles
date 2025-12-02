@@ -93,16 +93,28 @@ describe("nori-search-profiles", () => {
       expect(hasMatch).toBe(true);
     });
 
-    it("should not match /nori-search-profiles without query", () => {
+    it("should match /nori-search-profiles without query (shows help)", () => {
       const matchesWithoutQuery = noriSearchProfiles.matchers.some((m) => {
         const regex = new RegExp(m, "i");
         return regex.test("/nori-search-profiles");
       });
-      expect(matchesWithoutQuery).toBe(false);
+      expect(matchesWithoutQuery).toBe(true);
     });
   });
 
   describe("run function", () => {
+    it("should show help message when no query provided", async () => {
+      const input = createInput({
+        prompt: "/nori-search-profiles",
+      });
+      const result = await noriSearchProfiles.run({ input });
+
+      expect(result).not.toBeNull();
+      expect(result!.decision).toBe("block");
+      expect(result!.reason).toContain("Usage:");
+      expect(result!.reason).toContain("/nori-search-profiles <query>");
+    });
+
     it("should return error when no installation found", async () => {
       const noInstallDir = await fs.mkdtemp(
         path.join(tmpdir(), "nori-search-no-install-"),

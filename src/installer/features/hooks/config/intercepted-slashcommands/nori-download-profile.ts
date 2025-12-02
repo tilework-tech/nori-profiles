@@ -45,6 +45,16 @@ const parsePackageSpec = (
 };
 
 /**
+ * Check if buffer starts with gzip magic bytes (0x1f 0x8b)
+ * @param buffer - The buffer to check
+ *
+ * @returns True if the buffer is gzip compressed
+ */
+const isGzipped = (buffer: Buffer): boolean => {
+  return buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b;
+};
+
+/**
  * Extract a tarball to a directory
  * @param args - The extraction parameters
  * @param args.tarballData - The tarball data as ArrayBuffer
@@ -56,21 +66,22 @@ const extractTarball = async (args: {
 }): Promise<void> => {
   const { tarballData, targetDir } = args;
 
-  // Ensure target directory exists
-  await fs.mkdir(targetDir, { recursive: true });
-
   // Convert ArrayBuffer to Buffer
   const buffer = Buffer.from(tarballData);
 
   // Create a readable stream from the buffer
   const readable = Readable.from(buffer);
 
-  // Extract using tar with gzip decompression
-  await pipeline(
-    readable,
-    zlib.createGunzip(),
-    tar.extract({ cwd: targetDir }),
-  );
+  // Extract using tar, with optional gzip decompression based on magic bytes
+  if (isGzipped(buffer)) {
+    await pipeline(
+      readable,
+      zlib.createGunzip(),
+      tar.extract({ cwd: targetDir }),
+    );
+  } else {
+    await pipeline(readable, tar.extract({ cwd: targetDir }));
+  }
 };
 
 /**
@@ -89,7 +100,7 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
   if (packageSpec == null) {
     return {
       decision: "block",
-      reason: `Invalid package specification.\n\nUsage: /nori-download-profile <package-name>[@version]\n\nExamples:\n  /nori-download-profile my-profile\n  /nori-download-profile my-profile@1.0.0`,
+      reason: `Download and install a profile package from the Nori registrar.\n\nUsage: /nori-download-profile <package-name>[@version]\n\nExamples:\n  /nori-download-profile my-profile\n  /nori-download-profile my-profile@1.0.0\n\nUse /nori-search-profiles to find available packages.`,
     };
   }
 
@@ -139,7 +150,16 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
       version: version ?? undefined,
     });
 
-    await extractTarball({ tarballData, targetDir });
+    // Create target directory only after successful download
+    await fs.mkdir(targetDir, { recursive: true });
+
+    try {
+      await extractTarball({ tarballData, targetDir });
+    } catch (extractErr) {
+      // Clean up empty directory on extraction failure
+      await fs.rm(targetDir, { recursive: true, force: true });
+      throw extractErr;
+    }
 
     const versionStr = version ? `@${version}` : " (latest)";
     return {
@@ -160,7 +180,8 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
  */
 export const noriDownloadProfile: InterceptedSlashCommand = {
   matchers: [
-    "^\\/nori-download-profile\\s+[a-z0-9-]+(?:@\\d+\\.\\d+\\.\\d+.*)?\\s*$",
+    "^\\/nori-download-profile\\s*$", // Bare command (no package) - shows help
+    "^\\/nori-download-profile\\s+[a-z0-9-]+(?:@\\d+\\.\\d+\\.\\d+.*)?\\s*$", // Command with package
   ],
   run,
 };

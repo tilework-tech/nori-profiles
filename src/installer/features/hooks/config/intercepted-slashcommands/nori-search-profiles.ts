@@ -44,7 +44,7 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
   if (query == null) {
     return {
       decision: "block",
-      reason: `Invalid search query.\n\nUsage: /nori-search-profiles <query>\n\nExamples:\n  /nori-search-profiles typescript\n  /nori-search-profiles react developer`,
+      reason: `Search for profile packages in the Nori registrar.\n\nUsage: /nori-search-profiles <query>\n\nExamples:\n  /nori-search-profiles typescript\n  /nori-search-profiles react developer`,
     };
   }
 
@@ -92,6 +92,9 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
  * nori-search-profiles intercepted slash command
  */
 export const noriSearchProfiles: InterceptedSlashCommand = {
-  matchers: ["^\\/nori-search-profiles\\s+.+$"],
+  matchers: [
+    "^\\/nori-search-profiles\\s*$", // Bare command (no query) - shows help
+    "^\\/nori-search-profiles\\s+.+$", // Command with query
+  ],
   run,
 };

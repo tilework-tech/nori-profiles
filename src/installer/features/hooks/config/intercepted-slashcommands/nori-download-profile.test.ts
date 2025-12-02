@@ -85,8 +85,11 @@ describe("nori-download-profile", () => {
     });
 
     it("should match /nori-download-profile package-name", () => {
-      const regex = new RegExp(noriDownloadProfile.matchers[0], "i");
-      expect(regex.test("/nori-download-profile my-profile")).toBe(true);
+      const hasMatch = noriDownloadProfile.matchers.some((m) => {
+        const regex = new RegExp(m, "i");
+        return regex.test("/nori-download-profile my-profile");
+      });
+      expect(hasMatch).toBe(true);
     });
 
     it("should match /nori-download-profile package-name@version", () => {
@@ -97,16 +100,28 @@ describe("nori-download-profile", () => {
       expect(hasVersionMatcher).toBe(true);
     });
 
-    it("should not match /nori-download-profile without package name", () => {
+    it("should match /nori-download-profile without package name (shows help)", () => {
       const matchesWithoutPackage = noriDownloadProfile.matchers.some((m) => {
         const regex = new RegExp(m, "i");
         return regex.test("/nori-download-profile");
       });
-      expect(matchesWithoutPackage).toBe(false);
+      expect(matchesWithoutPackage).toBe(true);
     });
   });
 
   describe("run function", () => {
+    it("should show help message when no package name provided", async () => {
+      const input = createInput({
+        prompt: "/nori-download-profile",
+      });
+      const result = await noriDownloadProfile.run({ input });
+
+      expect(result).not.toBeNull();
+      expect(result!.decision).toBe("block");
+      expect(result!.reason).toContain("Usage:");
+      expect(result!.reason).toContain("/nori-download-profile <package-name>");
+    });
+
     it("should return error when no installation found", async () => {
       const noInstallDir = await fs.mkdtemp(
         path.join(tmpdir(), "nori-download-no-install-"),
@@ -162,9 +177,8 @@ describe("nori-download-profile", () => {
       expect(result!.reason).toContain("already exists");
     });
 
-    it("should download and extract tarball on success", async () => {
-      // Create a minimal valid tarball (gzipped tar)
-      // For this test we just verify the API is called correctly
+    it("should download and extract non-gzipped tarball on success", async () => {
+      // Registrar currently returns non-gzipped tarballs
       const mockPackument = {
         name: "test-profile",
         "dist-tags": { latest: "1.0.0" },
@@ -173,8 +187,8 @@ describe("nori-download-profile", () => {
         },
       };
 
-      // Create a real minimal tarball for testing extraction
-      const mockTarball = await createMockTarball();
+      // Create a non-gzipped tarball (matching current registrar behavior)
+      const mockTarball = await createMockTarball({ gzip: false });
 
       vi.mocked(registrarApi.getPackument).mockResolvedValue(mockPackument);
       vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
@@ -194,6 +208,22 @@ describe("nori-download-profile", () => {
         packageName: "test-profile",
         version: undefined,
       });
+    });
+
+    it("should download and extract gzipped tarball on success", async () => {
+      // Also support gzipped tarballs for future compatibility
+      const mockTarball = await createMockTarball({ gzip: true });
+
+      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+
+      const input = createInput({
+        prompt: "/nori-download-profile test-profile",
+      });
+      const result = await noriDownloadProfile.run({ input });
+
+      expect(result).not.toBeNull();
+      expect(result!.decision).toBe("block");
+      expect(result!.reason).toContain("Downloaded");
     });
 
     it("should pass version to downloadTarball when specified", async () => {
@@ -230,14 +260,23 @@ describe("nori-download-profile", () => {
 });
 
 /**
- * Creates a minimal mock tarball (gzipped tar) for testing
+ * Creates a minimal mock tarball for testing
  * Creates a real tarball with package.json and AGENT.md files
- * @returns A valid gzipped tarball as ArrayBuffer
+ * @param args - The tarball options
+ * @param args.gzip - Whether to gzip the tarball (default: false, matching registrar behavior)
+ *
+ * @returns A valid tarball as ArrayBuffer
  */
-const createMockTarball = async (): Promise<ArrayBuffer> => {
+const createMockTarball = async (args?: {
+  gzip?: boolean | null;
+}): Promise<ArrayBuffer> => {
+  const gzip = args?.gzip ?? false;
   // Create a temp directory with the files to pack
   const tempDir = await fs.mkdtemp(path.join(tmpdir(), "mock-tarball-source-"));
-  const tarballPath = path.join(tmpdir(), `mock-tarball-${Date.now()}.tgz`);
+  const tarballPath = path.join(
+    tmpdir(),
+    `mock-tarball-${Date.now()}.${gzip ? "tgz" : "tar"}`,
+  );
 
   try {
     // Create mock files
@@ -250,7 +289,7 @@ const createMockTarball = async (): Promise<ArrayBuffer> => {
     // Create the tarball
     await tar.create(
       {
-        gzip: true,
+        gzip,
         file: tarballPath,
         cwd: tempDir,
       },
