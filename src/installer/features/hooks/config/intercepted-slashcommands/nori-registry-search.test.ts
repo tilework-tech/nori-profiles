@@ -1,5 +1,5 @@
 /**
- * Tests for nori-search-profiles intercepted slash command
+ * Tests for nori-registry-search intercepted slash command
  */
 
 import * as fs from "fs/promises";
@@ -19,14 +19,26 @@ import { registrarApi } from "@/api/registrar.js";
 
 import type { HookInput } from "./types.js";
 
-import { noriSearchProfiles } from "./nori-search-profiles.js";
+import { noriRegistrySearch } from "./nori-registry-search.js";
 
 // ANSI color codes for verification
 const GREEN = "\x1b[0;32m";
 const RED = "\x1b[0;31m";
 const NC = "\x1b[0m"; // No Color / Reset
 
-describe("nori-search-profiles", () => {
+/**
+ * Strip ANSI escape codes from a string for plain text comparison
+ *
+ * @param str - The string containing ANSI codes
+ *
+ * @returns The string with ANSI codes removed
+ */
+const stripAnsi = (str: string): string => {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1b\[[0-9;]*m/g, "");
+};
+
+describe("nori-registry-search", () => {
   let testDir: string;
   let configPath: string;
 
@@ -35,7 +47,7 @@ describe("nori-search-profiles", () => {
 
     // Create test directory structure simulating a Nori installation
     testDir = await fs.mkdtemp(
-      path.join(tmpdir(), "nori-search-profiles-test-"),
+      path.join(tmpdir(), "nori-registry-search-test-"),
     );
     configPath = path.join(testDir, ".nori-config.json");
 
@@ -74,34 +86,34 @@ describe("nori-search-profiles", () => {
 
   describe("matchers", () => {
     it("should have valid regex matchers", () => {
-      expect(noriSearchProfiles.matchers).toBeInstanceOf(Array);
-      expect(noriSearchProfiles.matchers.length).toBeGreaterThan(0);
+      expect(noriRegistrySearch.matchers).toBeInstanceOf(Array);
+      expect(noriRegistrySearch.matchers.length).toBeGreaterThan(0);
 
-      for (const matcher of noriSearchProfiles.matchers) {
+      for (const matcher of noriRegistrySearch.matchers) {
         expect(() => new RegExp(matcher)).not.toThrow();
       }
     });
 
-    it("should match /nori-search-profiles query", () => {
-      const hasMatch = noriSearchProfiles.matchers.some((m) => {
+    it("should match /nori-registry-search query", () => {
+      const hasMatch = noriRegistrySearch.matchers.some((m) => {
         const regex = new RegExp(m, "i");
-        return regex.test("/nori-search-profiles test");
+        return regex.test("/nori-registry-search test");
       });
       expect(hasMatch).toBe(true);
     });
 
-    it("should match /nori-search-profiles with multiple words", () => {
-      const hasMatch = noriSearchProfiles.matchers.some((m) => {
+    it("should match /nori-registry-search with multiple words", () => {
+      const hasMatch = noriRegistrySearch.matchers.some((m) => {
         const regex = new RegExp(m, "i");
-        return regex.test("/nori-search-profiles typescript react");
+        return regex.test("/nori-registry-search typescript react");
       });
       expect(hasMatch).toBe(true);
     });
 
-    it("should match /nori-search-profiles without query (shows help)", () => {
-      const matchesWithoutQuery = noriSearchProfiles.matchers.some((m) => {
+    it("should match /nori-registry-search without query (shows help)", () => {
+      const matchesWithoutQuery = noriRegistrySearch.matchers.some((m) => {
         const regex = new RegExp(m, "i");
-        return regex.test("/nori-search-profiles");
+        return regex.test("/nori-registry-search");
       });
       expect(matchesWithoutQuery).toBe(true);
     });
@@ -110,31 +122,34 @@ describe("nori-search-profiles", () => {
   describe("run function", () => {
     it("should show help message when no query provided", async () => {
       const input = createInput({
-        prompt: "/nori-search-profiles",
+        prompt: "/nori-registry-search",
       });
-      const result = await noriSearchProfiles.run({ input });
+      const result = await noriRegistrySearch.run({ input });
 
       expect(result).not.toBeNull();
       expect(result!.decision).toBe("block");
-      expect(result!.reason).toContain("Usage:");
-      expect(result!.reason).toContain("/nori-search-profiles <query>");
+      const plainReason = stripAnsi(result!.reason!);
+      expect(plainReason).toContain("Usage:");
+      expect(plainReason).toContain("/nori-registry-search <query>");
     });
 
     it("should return error when no installation found", async () => {
       const noInstallDir = await fs.mkdtemp(
-        path.join(tmpdir(), "nori-search-no-install-"),
+        path.join(tmpdir(), "nori-registry-search-no-install-"),
       );
 
       try {
         const input = createInput({
-          prompt: "/nori-search-profiles test",
+          prompt: "/nori-registry-search test",
           cwd: noInstallDir,
         });
-        const result = await noriSearchProfiles.run({ input });
+        const result = await noriRegistrySearch.run({ input });
 
         expect(result).not.toBeNull();
         expect(result!.decision).toBe("block");
-        expect(result!.reason).toContain("No Nori installation found");
+        expect(stripAnsi(result!.reason!)).toContain(
+          "No Nori installation found",
+        );
       } finally {
         await fs.rm(noInstallDir, { recursive: true, force: true });
       }
@@ -163,15 +178,16 @@ describe("nori-search-profiles", () => {
       vi.mocked(registrarApi.searchPackages).mockResolvedValue(mockPackages);
 
       const input = createInput({
-        prompt: "/nori-search-profiles test",
+        prompt: "/nori-registry-search test",
       });
-      const result = await noriSearchProfiles.run({ input });
+      const result = await noriRegistrySearch.run({ input });
 
       expect(result).not.toBeNull();
       expect(result!.decision).toBe("block");
-      expect(result!.reason).toContain("test-profile");
-      expect(result!.reason).toContain("another-profile");
-      expect(result!.reason).toContain("A test profile");
+      const plainReason = stripAnsi(result!.reason!);
+      expect(plainReason).toContain("test-profile");
+      expect(plainReason).toContain("another-profile");
+      expect(plainReason).toContain("A test profile");
 
       // Verify API was called with correct query
       expect(registrarApi.searchPackages).toHaveBeenCalledWith({
@@ -183,13 +199,13 @@ describe("nori-search-profiles", () => {
       vi.mocked(registrarApi.searchPackages).mockResolvedValue([]);
 
       const input = createInput({
-        prompt: "/nori-search-profiles nonexistent",
+        prompt: "/nori-registry-search nonexistent",
       });
-      const result = await noriSearchProfiles.run({ input });
+      const result = await noriRegistrySearch.run({ input });
 
       expect(result).not.toBeNull();
       expect(result!.decision).toBe("block");
-      expect(result!.reason).toContain("No profiles found");
+      expect(stripAnsi(result!.reason!)).toContain("No profiles found");
     });
 
     it("should handle network errors gracefully", async () => {
@@ -198,22 +214,22 @@ describe("nori-search-profiles", () => {
       );
 
       const input = createInput({
-        prompt: "/nori-search-profiles test",
+        prompt: "/nori-registry-search test",
       });
-      const result = await noriSearchProfiles.run({ input });
+      const result = await noriRegistrySearch.run({ input });
 
       expect(result).not.toBeNull();
       expect(result!.decision).toBe("block");
-      expect(result!.reason).toContain("Failed");
+      expect(stripAnsi(result!.reason!)).toContain("Failed");
     });
 
     it("should pass multi-word query to API", async () => {
       vi.mocked(registrarApi.searchPackages).mockResolvedValue([]);
 
       const input = createInput({
-        prompt: "/nori-search-profiles typescript react developer",
+        prompt: "/nori-registry-search typescript react developer",
       });
-      await noriSearchProfiles.run({ input });
+      await noriRegistrySearch.run({ input });
 
       expect(registrarApi.searchPackages).toHaveBeenCalledWith({
         query: "typescript react developer",
@@ -237,9 +253,9 @@ describe("nori-search-profiles", () => {
       vi.mocked(registrarApi.searchPackages).mockResolvedValue(mockPackages);
 
       const input = createInput({
-        prompt: "/nori-search-profiles test",
+        prompt: "/nori-registry-search test",
       });
-      const result = await noriSearchProfiles.run({ input });
+      const result = await noriRegistrySearch.run({ input });
 
       expect(result).not.toBeNull();
       expect(result!.reason).toContain(GREEN);
@@ -250,9 +266,9 @@ describe("nori-search-profiles", () => {
       vi.mocked(registrarApi.searchPackages).mockResolvedValue([]);
 
       const input = createInput({
-        prompt: "/nori-search-profiles nonexistent",
+        prompt: "/nori-registry-search nonexistent",
       });
-      const result = await noriSearchProfiles.run({ input });
+      const result = await noriRegistrySearch.run({ input });
 
       expect(result).not.toBeNull();
       expect(result!.reason).toContain(GREEN);
@@ -265,9 +281,9 @@ describe("nori-search-profiles", () => {
       );
 
       const input = createInput({
-        prompt: "/nori-search-profiles test",
+        prompt: "/nori-registry-search test",
       });
-      const result = await noriSearchProfiles.run({ input });
+      const result = await noriRegistrySearch.run({ input });
 
       expect(result).not.toBeNull();
       expect(result!.reason).toContain(RED);
@@ -281,10 +297,10 @@ describe("nori-search-profiles", () => {
 
       try {
         const input = createInput({
-          prompt: "/nori-search-profiles test",
+          prompt: "/nori-registry-search test",
           cwd: noInstallDir,
         });
-        const result = await noriSearchProfiles.run({ input });
+        const result = await noriRegistrySearch.run({ input });
 
         expect(result).not.toBeNull();
         expect(result!.reason).toContain(RED);
@@ -296,9 +312,9 @@ describe("nori-search-profiles", () => {
 
     it("should format help message with green color codes", async () => {
       const input = createInput({
-        prompt: "/nori-search-profiles",
+        prompt: "/nori-registry-search",
       });
-      const result = await noriSearchProfiles.run({ input });
+      const result = await noriRegistrySearch.run({ input });
 
       expect(result).not.toBeNull();
       expect(result!.reason).toContain(GREEN);

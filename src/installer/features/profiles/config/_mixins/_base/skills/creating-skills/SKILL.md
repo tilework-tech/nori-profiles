@@ -46,6 +46,8 @@ Use `mkdir foo/bar`
 
 # Writing scripts
 
+Skills may be bundled with scripts. Scripts are simple code cli tools that do various things deterministically.
+
 Any scripts you write should be entirely self contained. Ask the user which
 language they prefer.
 
@@ -61,4 +63,5 @@ These variables are automatically substituted when skills are installed:
 - `{{skills_dir}}` → actual path to skills directory (e.g., `/home/user/.claude/skills`)
 - `{{nori_install_dir}}` → actual install directory (e.g., `/home/user`)
 
-Use these in your skill content to create portable paths.
+Use these in your skill content to create portable paths. This is especially
+necessary for making sure scripts are discoverable.
