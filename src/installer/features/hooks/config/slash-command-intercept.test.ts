@@ -387,7 +387,21 @@ describe("slash-command-intercept hook", () => {
 
         const result = await runHookScript({ scriptPath, stdinData });
 
-        expect(result.exitCode).toBe(0);
+        // Debug: Log the result details
+        process.stderr.write(
+          `\nDEBUG error-handling test: exitCode=${result.exitCode}\n`,
+        );
+        process.stderr.write(
+          `DEBUG error-handling test: stdout=${result.stdout}\n`,
+        );
+        process.stderr.write(
+          `DEBUG error-handling test: stderr=${result.stderr}\n`,
+        );
+
+        expect(
+          result.exitCode,
+          `Expected exit code 0, got ${result.exitCode}. stderr: ${result.stderr}, stdout: ${result.stdout}`,
+        ).toBe(0);
 
         const output = JSON.parse(result.stdout);
         expect(output.decision).toBe("block");
