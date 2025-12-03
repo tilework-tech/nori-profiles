@@ -46,9 +46,9 @@ When an update is available (latestVersion is valid AND greater than installedVe
 
 - `nori-toggle-session-transcripts.ts`: Toggles the `sendSessionTranscript` field in `.nori-config.json` between "enabled" and "disabled". Default state (missing field) is treated as enabled.
 
-- `nori-search-profiles.ts`: Handles `/nori-search-profiles <query>` to search for profile packages in the Nori registrar. Uses registrarApi.searchPackages() from @/plugin/src/api/registrar.ts. Returns formatted list of matching packages with descriptions, or error message if no results found.
+- `nori-registry-search.ts`: Handles `/nori-registry-search <query>` to search for profile packages in the Nori registrar. Uses registrarApi.searchPackages() from @/plugin/src/api/registrar.ts. Returns formatted list of matching packages with descriptions, or error message if no results found.
 
-- `nori-download-profile.ts`: Handles `/nori-download-profile <package-name>[@version]` to download and install profile packages from the Nori registrar. Uses registrarApi.downloadTarball() to fetch the tarball, then extracts it using the `tar` npm package with zlib gzip decompression. Installs profiles to `{installDir}/.claude/profiles/{packageName}/`. Checks for existing installations and refuses to overwrite. Requires exactly one Nori installation to be detected (errors if multiple installations found).
+- `nori-registry-download.ts`: Handles `/nori-registry-download <package-name>[@version]` to download and install profile packages from the Nori registrar. Uses registrarApi.downloadTarball() to fetch the tarball, then extracts it using the `tar` npm package with zlib gzip decompression. Installs profiles to `{installDir}/.claude/profiles/{packageName}/`. Checks for existing installations and refuses to overwrite. Requires exactly one Nori installation to be detected (errors if multiple installations found).
 
 All intercepted slash commands use `formatSuccess()` and `formatError()` from format.ts to wrap their `reason` output strings, ensuring consistent colored terminal output.
 

@@ -1,6 +1,6 @@
 /**
  * Intercepted slash command for downloading profile packages
- * Handles /nori-download-profile <package-name>[@version] command
+ * Handles /nori-registry-download <package-name>[@version] command
  */
 
 import * as fs from "fs/promises";
@@ -34,7 +34,7 @@ const parsePackageSpec = (
 ): { packageName: string; version?: string | null } | null => {
   const match = prompt
     .trim()
-    .match(/^\/nori-download-profile\s+([a-z0-9-]+)(?:@(\d+\.\d+\.\d+.*))?$/i);
+    .match(/^\/nori-registry-download\s+([a-z0-9-]+)(?:@(\d+\.\d+\.\d+.*))?$/i);
 
   if (!match) {
     return null;
@@ -87,7 +87,7 @@ const extractTarball = async (args: {
 };
 
 /**
- * Run the nori-download-profile command
+ * Run the nori-registry-download command
  * @param args - The function arguments
  * @param args.input - The hook input containing prompt and cwd
  *
@@ -103,7 +103,7 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
     return {
       decision: "block",
       reason: formatSuccess({
-        message: `Download and install a profile package from the Nori registrar.\n\nUsage: /nori-download-profile <package-name>[@version]\n\nExamples:\n  /nori-download-profile my-profile\n  /nori-download-profile my-profile@1.0.0\n\nUse /nori-search-profiles to find available packages.`,
+        message: `Download and install a profile package from the Nori registrar.\n\nUsage: /nori-registry-download <package-name>[@version]\n\nExamples:\n  /nori-registry-download my-profile\n  /nori-registry-download my-profile@1.0.0\n\nUse /nori-registry-search to find available packages.`,
       }),
     };
   }
@@ -190,12 +190,12 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
 };
 
 /**
- * nori-download-profile intercepted slash command
+ * nori-registry-download intercepted slash command
  */
-export const noriDownloadProfile: InterceptedSlashCommand = {
+export const noriRegistryDownload: InterceptedSlashCommand = {
   matchers: [
-    "^\\/nori-download-profile\\s*$", // Bare command (no package) - shows help
-    "^\\/nori-download-profile\\s+[a-z0-9-]+(?:@\\d+\\.\\d+\\.\\d+.*)?\\s*$", // Command with package
+    "^\\/nori-registry-download\\s*$", // Bare command (no package) - shows help
+    "^\\/nori-registry-download\\s+[a-z0-9-]+(?:@\\d+\\.\\d+\\.\\d+.*)?\\s*$", // Command with package
   ],
   run,
 };
