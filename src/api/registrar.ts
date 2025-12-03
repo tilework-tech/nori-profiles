@@ -50,6 +50,14 @@ export type SearchPackagesRequest = {
   authToken?: string | null;
 };
 
+export type SearchPackagesOnRegistryRequest = {
+  query: string;
+  registryUrl: string;
+  authToken?: string | null;
+  limit?: number | null;
+  offset?: number | null;
+};
+
 export type GetPackumentRequest = {
   packageName: string;
   registryUrl?: string | null;
@@ -110,6 +118,47 @@ export const registrarApi = {
     const response = await fetch(url, {
       method: "GET",
       ...(Object.keys(headers).length > 0 ? { headers } : {}),
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({
+        error: `HTTP ${response.status}`,
+      }))) as { error?: string };
+      throw new Error(errorData.error ?? `HTTP ${response.status}`);
+    }
+
+    return (await response.json()) as Array<Package>;
+  },
+
+  /**
+   * Search for packages on a specific registry
+   * @param args - The search parameters including registry URL
+   *
+   * @returns Array of matching packages
+   */
+  searchPackagesOnRegistry: async (
+    args: SearchPackagesOnRegistryRequest,
+  ): Promise<Array<Package>> => {
+    const { query, registryUrl, authToken, limit, offset } = args;
+
+    const params = new URLSearchParams({ q: query });
+    if (limit != null) {
+      params.set("limit", limit.toString());
+    }
+    if (offset != null) {
+      params.set("offset", offset.toString());
+    }
+
+    const url = `${registryUrl}/api/packages/search?${params.toString()}`;
+
+    const headers: Record<string, string> = {};
+    if (authToken != null) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers,
     });
 
     if (!response.ok) {
