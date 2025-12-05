@@ -16,8 +16,9 @@ import { getInstalledVersion } from "./version.js";
 let consoleOutput: Array<string> = [];
 const originalConsoleLog = console.log;
 
-// Track whether nori-ai uninstall was called
+// Track whether nori-ai uninstall was called and the command used
 let uninstallCalled = false;
+let uninstallCommand = "";
 
 // Mock child_process to intercept nori-ai calls
 vi.mock("child_process", async (importOriginal) => {
@@ -29,6 +30,7 @@ vi.mock("child_process", async (importOriginal) => {
       const match = command.match(/nori-ai uninstall/);
       if (match) {
         uninstallCalled = true;
+        uninstallCommand = command;
 
         // Simulate uninstall behavior - remove the marker file
         try {
@@ -56,6 +58,7 @@ vi.mock("child_process", async (importOriginal) => {
 vi.mock("./env.js", () => {
   const testRoot = "/tmp/install-integration-test-mcp-root";
   const testClaudeDir = "/tmp/install-integration-test-claude";
+  const testNoriDir = "/tmp/install-integration-test-nori";
   return {
     MCP_ROOT: testRoot,
     getClaudeDir: (_args: { installDir: string }) => testClaudeDir,
@@ -71,8 +74,9 @@ vi.mock("./env.js", () => {
       `${testClaudeDir}/CLAUDE.md`,
     getClaudeSkillsDir: (_args: { installDir: string }) =>
       `${testClaudeDir}/skills`,
-    getClaudeProfilesDir: (_args: { installDir: string }) =>
-      `${testClaudeDir}/profiles`,
+    getNoriDir: (_args: { installDir: string }) => testNoriDir,
+    getNoriProfilesDir: (_args: { installDir: string }) =>
+      `${testNoriDir}/profiles`,
   };
 });
 
@@ -90,6 +94,7 @@ describe("install integration test", () => {
 
   const TEST_MCP_ROOT = "/tmp/install-integration-test-mcp-root";
   const TEST_CLAUDE_DIR = "/tmp/install-integration-test-claude";
+  const TEST_NORI_DIR = "/tmp/install-integration-test-nori";
 
   beforeEach(async () => {
     // Create temp directory
@@ -105,8 +110,9 @@ describe("install integration test", () => {
     VERSION_FILE_PATH = path.join(tempDir, ".nori-installed-version");
     MARKER_FILE_PATH = path.join(tempDir, ".nori-test-installation-marker");
 
-    // Reset tracking variable
+    // Reset tracking variables
     uninstallCalled = false;
+    uninstallCommand = "";
 
     // Clean up any existing files in temp dir
     try {
@@ -177,6 +183,11 @@ describe("install integration test", () => {
     // This ensures we clean up the previous installation before upgrading
     expect(uninstallCalled).toBe(true);
 
+    // CRITICAL: Verify that --install-dir was passed to uninstall command
+    // This ensures uninstall runs in the correct directory, not process.cwd()
+    expect(uninstallCommand).toContain("--install-dir");
+    expect(uninstallCommand).toContain(tempDir);
+
     // Verify the marker file was removed by the version-specific uninstall
     expect(fs.existsSync(MARKER_FILE_PATH)).toBe(false);
 
@@ -208,7 +219,8 @@ describe("install integration test", () => {
 
     // STEP 3: Verify paid features are installed
     // Check that paid skills exist in the profile (WITH 'paid-' prefix from mixin)
-    const profileDir = path.join(TEST_CLAUDE_DIR, "profiles", "senior-swe");
+    // Profiles are stored in .nori/profiles, not .claude/profiles
+    const profileDir = path.join(TEST_NORI_DIR, "profiles", "senior-swe");
     const skillsDir = path.join(profileDir, "skills");
 
     // Paid skills are copied from mixin with their original names (paid- prefix)
@@ -256,7 +268,8 @@ describe("install integration test", () => {
     await installMain({ nonInteractive: true, installDir: tempDir });
 
     // STEP 3: Verify paid features are NOT installed
-    const profileDir = path.join(TEST_CLAUDE_DIR, "profiles", "senior-swe");
+    // Profiles are stored in .nori/profiles, not .claude/profiles
+    const profileDir = path.join(TEST_NORI_DIR, "profiles", "senior-swe");
     const skillsDir = path.join(profileDir, "skills");
 
     // Paid skills should NOT exist for free users (check with paid- prefix)
@@ -364,6 +377,7 @@ describe("install integration test", () => {
 
     // STEP 1: Snapshot state BEFORE install
     const preInstallClaudeSnapshot = getDirectorySnapshot(TEST_CLAUDE_DIR);
+    const preInstallNoriSnapshot = getDirectorySnapshot(TEST_NORI_DIR);
     const preInstallCwdSnapshot = getDirectorySnapshot(tempDir);
 
     // STEP 2: Install with paid config to get all features
@@ -381,27 +395,33 @@ describe("install integration test", () => {
 
     // STEP 3: Verify installation actually created files
     const postInstallClaudeSnapshot = getDirectorySnapshot(TEST_CLAUDE_DIR);
+    const postInstallNoriSnapshot = getDirectorySnapshot(TEST_NORI_DIR);
     const postInstallCwdSnapshot = getDirectorySnapshot(tempDir);
 
     // Installation should have added files
     expect(postInstallClaudeSnapshot.length).toBeGreaterThan(
       preInstallClaudeSnapshot.length,
     );
+    expect(postInstallNoriSnapshot.length).toBeGreaterThan(
+      preInstallNoriSnapshot.length,
+    );
     expect(postInstallCwdSnapshot.length).toBeGreaterThan(
       preInstallCwdSnapshot.length,
     );
 
     // Verify some expected files exist (sanity check)
+    // In .claude: agents, commands, skills
     expect(postInstallClaudeSnapshot.some((f) => f.includes("agents"))).toBe(
       true,
     );
     expect(postInstallClaudeSnapshot.some((f) => f.includes("commands"))).toBe(
       true,
     );
-    expect(postInstallClaudeSnapshot.some((f) => f.includes("profiles"))).toBe(
+    expect(postInstallClaudeSnapshot.some((f) => f.includes("skills"))).toBe(
       true,
     );
-    expect(postInstallClaudeSnapshot.some((f) => f.includes("skills"))).toBe(
+    // In .nori: profiles
+    expect(postInstallNoriSnapshot.some((f) => f.includes("profiles"))).toBe(
       true,
     );
 

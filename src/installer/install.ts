@@ -24,7 +24,7 @@ import {
   isPaidInstall,
   type Config,
 } from "@/installer/config.js";
-import { getClaudeDir } from "@/installer/env.js";
+import { getNoriProfilesDir } from "@/installer/env.js";
 import { LoaderRegistry } from "@/installer/features/loaderRegistry.js";
 import { hasExistingInstallation } from "@/installer/installState.js";
 import {
@@ -102,8 +102,7 @@ const getAvailableProfiles = async (args: {
 
   // Read from installed profiles directory (already installed profiles)
   try {
-    const claudeDir = getClaudeDir({ installDir });
-    const installedProfilesDir = path.join(claudeDir, "profiles");
+    const installedProfilesDir = getNoriProfilesDir({ installDir });
     const installedEntries = await fs.readdir(installedProfilesDir, {
       withFileTypes: true,
     });
@@ -370,9 +369,12 @@ export const interactive = async (args?: {
     });
 
     try {
-      execSync(`nori-ai uninstall --non-interactive`, {
-        stdio: "inherit",
-      });
+      execSync(
+        `nori-ai uninstall --non-interactive --install-dir="${normalizedInstallDir}"`,
+        {
+          stdio: "inherit",
+        },
+      );
     } catch (err: any) {
       info({
         message: `Note: Uninstall at v${previousVersion} failed (may not exist). Continuing with installation...`,
@@ -552,9 +554,12 @@ export const noninteractive = async (args?: {
     });
 
     try {
-      execSync(`nori-ai uninstall --non-interactive`, {
-        stdio: "inherit",
-      });
+      execSync(
+        `nori-ai uninstall --non-interactive --install-dir="${normalizedInstallDir}"`,
+        {
+          stdio: "inherit",
+        },
+      );
     } catch (err: any) {
       info({
         message: `Note: Uninstall at v${previousVersion} failed (may not exist). Continuing with installation...`,
