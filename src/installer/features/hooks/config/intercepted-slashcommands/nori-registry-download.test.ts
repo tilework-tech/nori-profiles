@@ -10,10 +10,10 @@ import * as tar from "tar";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 // Mock the registrar API
-vi.mock("@/api/registrar.js", () => ({
-  REGISTRAR_URL: "https://registrar.tilework.tech",
-  registrarApi: {
-    getPackument: vi.fn(),
+vi.mock("@/api/profileRegistry.js", () => ({
+  PROFILE_REGISTRY_URL: "https://registrar.tilework.tech",
+  profileRegistryApi: {
+    getProfileMetadata: vi.fn(),
     downloadTarball: vi.fn(),
   },
 }));
@@ -29,13 +29,13 @@ vi.mock("@/api/registryAuth.js", () => ({
   getRegistryAuthToken: vi.fn(),
 }));
 
-import { registrarApi, REGISTRAR_URL } from "@/api/registrar.js";
 import { getRegistryAuthToken } from "@/api/registryAuth.js";
 import { loadConfig, getRegistryAuth } from "@/installer/config.js";
 
 import type { HookInput } from "./types.js";
 
 import { noriRegistryDownload } from "./nori-registry-download.js";
+import { profileRegistryApi, PROFILE_REGISTRY_URL } from "@/api/profileRegistry.js";
 
 // ANSI color codes for verification
 const GREEN = "\x1b[0;32m";
@@ -115,7 +115,7 @@ describe("nori-registry-download", () => {
       }
     });
 
-    it("should match /nori-registry-download package-name", () => {
+    it("should match /nori-registry-download profile-name", () => {
       const hasMatch = noriRegistryDownload.matchers.some((m) => {
         const regex = new RegExp(m, "i");
         return regex.test("/nori-registry-download my-profile");
@@ -123,7 +123,7 @@ describe("nori-registry-download", () => {
       expect(hasMatch).toBe(true);
     });
 
-    it("should match /nori-registry-download package-name@version", () => {
+    it("should match /nori-registry-download profile-name@version", () => {
       const hasVersionMatcher = noriRegistryDownload.matchers.some((m) => {
         const regex = new RegExp(m, "i");
         return regex.test("/nori-registry-download my-profile@1.0.0");
@@ -151,7 +151,7 @@ describe("nori-registry-download", () => {
       expect(result!.decision).toBe("block");
       const plainReason = stripAnsi(result!.reason!);
       expect(plainReason).toContain("Usage:");
-      expect(plainReason).toContain("/nori-registry-download <package-name>");
+      expect(plainReason).toContain("/nori-registry-download <profile-name>");
     });
 
     it("should return error when no installation found", async () => {
@@ -213,7 +213,7 @@ describe("nori-registry-download", () => {
 
     it("should download and extract non-gzipped tarball on success", async () => {
       // Registrar currently returns non-gzipped tarballs
-      const mockPackument = {
+      const mockProfileMetadata = {
         name: "test-profile",
         "dist-tags": { latest: "1.0.0" },
         versions: {
@@ -224,8 +224,8 @@ describe("nori-registry-download", () => {
       // Create a non-gzipped tarball (matching current registrar behavior)
       const mockTarball = await createMockTarball({ gzip: false });
 
-      vi.mocked(registrarApi.getPackument).mockResolvedValue(mockPackument);
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.getProfileMetadata).mockResolvedValue(mockProfileMetadata);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       const input = createInput({
         prompt: "/nori-registry-download test-profile",
@@ -238,9 +238,9 @@ describe("nori-registry-download", () => {
       expect(stripAnsi(result!.reason!)).toContain("test-profile");
 
       // Verify API was called
-      expect(registrarApi.downloadTarball).toHaveBeenCalledWith(
+      expect(profileRegistryApi.downloadTarball).toHaveBeenCalledWith(
         expect.objectContaining({
-          packageName: "test-profile",
+          profileName: "test-profile",
           version: undefined,
         }),
       );
@@ -250,7 +250,7 @@ describe("nori-registry-download", () => {
       // Also support gzipped tarballs for future compatibility
       const mockTarball = await createMockTarball({ gzip: true });
 
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       const input = createInput({
         prompt: "/nori-registry-download test-profile",
@@ -264,7 +264,7 @@ describe("nori-registry-download", () => {
 
     it("should pass version to downloadTarball when specified", async () => {
       const mockTarball = await createMockTarball();
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       const input = createInput({
         prompt: "/nori-registry-download test-profile@2.0.0",
@@ -272,16 +272,16 @@ describe("nori-registry-download", () => {
       const result = await noriRegistryDownload.run({ input });
 
       expect(result).not.toBeNull();
-      expect(registrarApi.downloadTarball).toHaveBeenCalledWith(
+      expect(profileRegistryApi.downloadTarball).toHaveBeenCalledWith(
         expect.objectContaining({
-          packageName: "test-profile",
+          profileName: "test-profile",
           version: "2.0.0",
         }),
       );
     });
 
     it("should handle network errors gracefully", async () => {
-      vi.mocked(registrarApi.downloadTarball).mockRejectedValue(
+      vi.mocked(profileRegistryApi.downloadTarball).mockRejectedValue(
         new Error("Network error: Failed to fetch"),
       );
 
@@ -299,7 +299,7 @@ describe("nori-registry-download", () => {
   describe("ANSI color formatting", () => {
     it("should format success download with green color codes", async () => {
       const mockTarball = await createMockTarball();
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       const input = createInput({
         prompt: "/nori-registry-download test-profile",
@@ -367,7 +367,7 @@ describe("nori-registry-download", () => {
     });
 
     it("should format network error with red color codes", async () => {
-      vi.mocked(registrarApi.downloadTarball).mockRejectedValue(
+      vi.mocked(profileRegistryApi.downloadTarball).mockRejectedValue(
         new Error("Network error"),
       );
 
@@ -425,14 +425,14 @@ describe("nori-registry-download", () => {
       });
 
       // Package found in public registry
-      vi.mocked(registrarApi.getPackument).mockResolvedValue({
+      vi.mocked(profileRegistryApi.getProfileMetadata).mockResolvedValue({
         name: "test-profile",
         "dist-tags": { latest: "1.0.0" },
         versions: {
           "1.0.0": { name: "test-profile", version: "1.0.0" },
         },
       });
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       const input = createInput({
         prompt: "/nori-registry-download test-profile",
@@ -443,7 +443,7 @@ describe("nori-registry-download", () => {
       expect(result!.decision).toBe("block");
       const plainReason = stripAnsi(result!.reason!);
       expect(plainReason).toContain("Downloaded");
-      expect(plainReason).toContain(REGISTRAR_URL);
+      expect(plainReason).toContain(PROFILE_REGISTRY_URL);
     });
 
     it("should download from private registry when package found only there", async () => {
@@ -471,7 +471,7 @@ describe("nori-registry-download", () => {
       vi.mocked(getRegistryAuthToken).mockResolvedValue("test-auth-token");
 
       // Package not found in public registry (404)
-      vi.mocked(registrarApi.getPackument)
+      vi.mocked(profileRegistryApi.getProfileMetadata)
         .mockRejectedValueOnce(new Error("Package not found"))
         .mockResolvedValueOnce({
           name: "test-profile",
@@ -482,7 +482,7 @@ describe("nori-registry-download", () => {
           },
         });
 
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       const input = createInput({
         prompt: "/nori-registry-download test-profile",
@@ -519,7 +519,7 @@ describe("nori-registry-download", () => {
       vi.mocked(getRegistryAuthToken).mockResolvedValue("test-auth-token");
 
       // Package found in both registries
-      vi.mocked(registrarApi.getPackument)
+      vi.mocked(profileRegistryApi.getProfileMetadata)
         .mockResolvedValueOnce({
           name: "test-profile",
           description: "Public profile",
@@ -545,8 +545,8 @@ describe("nori-registry-download", () => {
       expect(result).not.toBeNull();
       expect(result!.decision).toBe("block");
       const plainReason = stripAnsi(result!.reason!);
-      expect(plainReason).toContain("Multiple packages");
-      expect(plainReason).toContain(REGISTRAR_URL);
+      expect(plainReason).toContain("Multiple profiles");
+      expect(plainReason).toContain(PROFILE_REGISTRY_URL);
       expect(plainReason).toContain("https://private-registry.com");
       expect(plainReason).toContain("test-profile@1.0.0");
       expect(plainReason).toContain("test-profile@2.0.0");
@@ -577,7 +577,7 @@ describe("nori-registry-download", () => {
 
       vi.mocked(getRegistryAuthToken).mockResolvedValue("test-auth-token");
 
-      vi.mocked(registrarApi.getPackument).mockResolvedValue({
+      vi.mocked(profileRegistryApi.getProfileMetadata).mockResolvedValue({
         name: "test-profile",
         "dist-tags": { latest: "1.0.0" },
         versions: {
@@ -585,7 +585,7 @@ describe("nori-registry-download", () => {
         },
       });
 
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       const input = createInput({
         prompt:
@@ -598,11 +598,11 @@ describe("nori-registry-download", () => {
       const plainReason = stripAnsi(result!.reason!);
       expect(plainReason).toContain("Downloaded");
 
-      // Should only call getPackument once (for the specified registry)
-      expect(registrarApi.getPackument).toHaveBeenCalledTimes(1);
-      expect(registrarApi.getPackument).toHaveBeenCalledWith(
+      // Should only call getProfileMetadata once (for the specified registry)
+      expect(profileRegistryApi.getProfileMetadata).toHaveBeenCalledTimes(1);
+      expect(profileRegistryApi.getProfileMetadata).toHaveBeenCalledWith(
         expect.objectContaining({
-          packageName: "test-profile",
+          profileName: "test-profile",
           registryUrl: "https://private-registry.com",
         }),
       );
@@ -631,7 +631,7 @@ describe("nori-registry-download", () => {
       vi.mocked(getRegistryAuthToken).mockResolvedValue("test-auth-token");
 
       // Package not found in any registry
-      vi.mocked(registrarApi.getPackument).mockRejectedValue(
+      vi.mocked(profileRegistryApi.getProfileMetadata).mockRejectedValue(
         new Error("Package not found"),
       );
 
@@ -691,7 +691,7 @@ describe("nori-registry-download", () => {
         .mockResolvedValueOnce("test-auth-token");
 
       // Package not in public, not in first private (auth failed), found in second private
-      vi.mocked(registrarApi.getPackument)
+      vi.mocked(profileRegistryApi.getProfileMetadata)
         .mockRejectedValueOnce(new Error("Package not found")) // public
         .mockResolvedValueOnce({
           // second private (first is skipped due to auth failure)
@@ -703,7 +703,7 @@ describe("nori-registry-download", () => {
           },
         });
 
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       const input = createInput({
         prompt: "/nori-registry-download test-profile",

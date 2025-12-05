@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-import { registrarApi } from "./registrar.js";
+import { profileRegistryApi } from "./profileRegistry.js";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-describe("registrarApi", () => {
+describe("profileRegistryApi", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -15,7 +15,7 @@ describe("registrarApi", () => {
     vi.clearAllMocks();
   });
 
-  describe("searchPackages", () => {
+  describe("searchProfiles", () => {
     it("should return array of packages matching query", async () => {
       const mockPackages = [
         {
@@ -41,12 +41,12 @@ describe("registrarApi", () => {
         json: () => Promise.resolve(mockPackages),
       });
 
-      const result = await registrarApi.searchPackages({ query: "test" });
+      const result = await profileRegistryApi.searchProfiles({ query: "test" });
 
       expect(result).toEqual(mockPackages);
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://registrar.tilework.tech/api/packages/search?q=test",
+        "https://registrar.tilework.tech/profiles/search?q=test",
         expect.objectContaining({
           method: "GET",
         }),
@@ -59,7 +59,7 @@ describe("registrarApi", () => {
         json: () => Promise.resolve([]),
       });
 
-      const result = await registrarApi.searchPackages({
+      const result = await profileRegistryApi.searchProfiles({
         query: "nonexistent",
       });
 
@@ -72,14 +72,14 @@ describe("registrarApi", () => {
         json: () => Promise.resolve([]),
       });
 
-      await registrarApi.searchPackages({
+      await profileRegistryApi.searchProfiles({
         query: "test",
         limit: 10,
         offset: 20,
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://registrar.tilework.tech/api/packages/search?q=test&limit=10&offset=20",
+        "https://registrar.tilework.tech/profiles/search?q=test&limit=10&offset=20",
         expect.objectContaining({
           method: "GET",
         }),
@@ -92,13 +92,13 @@ describe("registrarApi", () => {
         json: () => Promise.resolve([]),
       });
 
-      await registrarApi.searchPackages({
+      await profileRegistryApi.searchProfiles({
         query: "test",
         registryUrl: "https://private-registry.example.com",
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://private-registry.example.com/api/packages/search?q=test",
+        "https://private-registry.example.com/profiles/search?q=test",
         expect.objectContaining({
           method: "GET",
         }),
@@ -111,14 +111,14 @@ describe("registrarApi", () => {
         json: () => Promise.resolve([]),
       });
 
-      await registrarApi.searchPackages({
+      await profileRegistryApi.searchProfiles({
         query: "test",
         registryUrl: "https://private-registry.example.com",
         authToken: "test-auth-token",
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://private-registry.example.com/api/packages/search?q=test",
+        "https://private-registry.example.com/profiles/search?q=test",
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({
@@ -136,12 +136,12 @@ describe("registrarApi", () => {
       });
 
       await expect(
-        registrarApi.searchPackages({ query: "test" }),
+        profileRegistryApi.searchProfiles({ query: "test" }),
       ).rejects.toThrow("Internal server error");
     });
   });
 
-  describe("getPackument", () => {
+  describe("getProfileMetadata", () => {
     it("should return packument for package name", async () => {
       const mockPackument = {
         name: "test-profile",
@@ -163,13 +163,13 @@ describe("registrarApi", () => {
         json: () => Promise.resolve(mockPackument),
       });
 
-      const result = await registrarApi.getPackument({
-        packageName: "test-profile",
+      const result = await profileRegistryApi.getProfileMetadata({
+        profileName: "test-profile",
       });
 
       expect(result).toEqual(mockPackument);
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://registrar.tilework.tech/api/packages/test-profile",
+        "https://registrar.tilework.tech/profiles/test-profile",
         expect.objectContaining({
           method: "GET",
         }),
@@ -184,7 +184,7 @@ describe("registrarApi", () => {
       });
 
       await expect(
-        registrarApi.getPackument({ packageName: "nonexistent" }),
+        profileRegistryApi.getProfileMetadata({ profileName: "nonexistent" }),
       ).rejects.toThrow("Package not found");
     });
 
@@ -202,13 +202,13 @@ describe("registrarApi", () => {
         json: () => Promise.resolve(mockPackument),
       });
 
-      await registrarApi.getPackument({
-        packageName: "test-profile",
+      await profileRegistryApi.getProfileMetadata({
+        profileName: "test-profile",
         registryUrl: "https://private-registry.example.com",
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://private-registry.example.com/api/packages/test-profile",
+        "https://private-registry.example.com/profiles/test-profile",
         expect.objectContaining({
           method: "GET",
         }),
@@ -229,14 +229,14 @@ describe("registrarApi", () => {
         json: () => Promise.resolve(mockPackument),
       });
 
-      await registrarApi.getPackument({
-        packageName: "test-profile",
+      await profileRegistryApi.getProfileMetadata({
+        profileName: "test-profile",
         registryUrl: "https://private-registry.example.com",
         authToken: "test-auth-token",
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://private-registry.example.com/api/packages/test-profile",
+        "https://private-registry.example.com/profiles/test-profile",
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({
@@ -256,14 +256,14 @@ describe("registrarApi", () => {
         arrayBuffer: () => Promise.resolve(mockTarballData),
       });
 
-      const result = await registrarApi.downloadTarball({
-        packageName: "test-profile",
+      const result = await profileRegistryApi.downloadTarball({
+        profileName: "test-profile",
         version: "1.0.0",
       });
 
       expect(result).toBe(mockTarballData);
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://registrar.tilework.tech/api/packages/test-profile/tarball/test-profile-1.0.0.tgz",
+        "https://registrar.tilework.tech/profiles/test-profile/tarball/test-profile-1.0.0.tgz",
         expect.objectContaining({
           method: "GET",
         }),
@@ -278,15 +278,15 @@ describe("registrarApi", () => {
       });
 
       await expect(
-        registrarApi.downloadTarball({
-          packageName: "nonexistent",
+        profileRegistryApi.downloadTarball({
+          profileName: "nonexistent",
           version: "1.0.0",
         }),
       ).rejects.toThrow("Tarball not found");
     });
 
     it("should fetch latest version when no version specified", async () => {
-      // First call to getPackument to resolve latest version
+      // First call to getProfileMetadata to resolve latest version
       const mockPackument = {
         name: "test-profile",
         "dist-tags": { latest: "2.0.0" },
@@ -308,8 +308,8 @@ describe("registrarApi", () => {
           arrayBuffer: () => Promise.resolve(mockTarballData),
         });
 
-      const result = await registrarApi.downloadTarball({
-        packageName: "test-profile",
+      const result = await profileRegistryApi.downloadTarball({
+        profileName: "test-profile",
       });
 
       expect(result).toBe(mockTarballData);
@@ -317,7 +317,7 @@ describe("registrarApi", () => {
       // First call should be to get packument
       expect(mockFetch).toHaveBeenNthCalledWith(
         1,
-        "https://registrar.tilework.tech/api/packages/test-profile",
+        "https://registrar.tilework.tech/profiles/test-profile",
         expect.objectContaining({
           method: "GET",
         }),
@@ -326,7 +326,7 @@ describe("registrarApi", () => {
       // Second call should be to download tarball with resolved version
       expect(mockFetch).toHaveBeenNthCalledWith(
         2,
-        "https://registrar.tilework.tech/api/packages/test-profile/tarball/test-profile-2.0.0.tgz",
+        "https://registrar.tilework.tech/profiles/test-profile/tarball/test-profile-2.0.0.tgz",
         expect.objectContaining({
           method: "GET",
         }),
@@ -341,14 +341,14 @@ describe("registrarApi", () => {
         arrayBuffer: () => Promise.resolve(mockTarballData),
       });
 
-      await registrarApi.downloadTarball({
-        packageName: "test-profile",
+      await profileRegistryApi.downloadTarball({
+        profileName: "test-profile",
         version: "1.0.0",
         registryUrl: "https://private-registry.example.com",
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://private-registry.example.com/api/packages/test-profile/tarball/test-profile-1.0.0.tgz",
+        "https://private-registry.example.com/profiles/test-profile/tarball/test-profile-1.0.0.tgz",
         expect.objectContaining({
           method: "GET",
         }),
@@ -363,15 +363,15 @@ describe("registrarApi", () => {
         arrayBuffer: () => Promise.resolve(mockTarballData),
       });
 
-      await registrarApi.downloadTarball({
-        packageName: "test-profile",
+      await profileRegistryApi.downloadTarball({
+        profileName: "test-profile",
         version: "1.0.0",
         registryUrl: "https://private-registry.example.com",
         authToken: "test-auth-token",
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://private-registry.example.com/api/packages/test-profile/tarball/test-profile-1.0.0.tgz",
+        "https://private-registry.example.com/profiles/test-profile/tarball/test-profile-1.0.0.tgz",
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({
@@ -402,8 +402,8 @@ describe("registrarApi", () => {
           arrayBuffer: () => Promise.resolve(mockTarballData),
         });
 
-      await registrarApi.downloadTarball({
-        packageName: "test-profile",
+      await profileRegistryApi.downloadTarball({
+        profileName: "test-profile",
         registryUrl: "https://private-registry.example.com",
         authToken: "test-auth-token",
       });
@@ -411,7 +411,7 @@ describe("registrarApi", () => {
       // First call should be to get packument with auth
       expect(mockFetch).toHaveBeenNthCalledWith(
         1,
-        "https://private-registry.example.com/api/packages/test-profile",
+        "https://private-registry.example.com/profiles/test-profile",
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({
@@ -423,7 +423,7 @@ describe("registrarApi", () => {
       // Second call should be to download tarball with auth
       expect(mockFetch).toHaveBeenNthCalledWith(
         2,
-        "https://private-registry.example.com/api/packages/test-profile/tarball/test-profile-2.0.0.tgz",
+        "https://private-registry.example.com/profiles/test-profile/tarball/test-profile-2.0.0.tgz",
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({
@@ -434,7 +434,7 @@ describe("registrarApi", () => {
     });
   });
 
-  describe("searchPackagesOnRegistry", () => {
+  describe("searchProfilesOnRegistry", () => {
     it("should search packages on a custom registry URL without auth", async () => {
       const mockPackages = [
         {
@@ -452,14 +452,14 @@ describe("registrarApi", () => {
         json: () => Promise.resolve(mockPackages),
       });
 
-      const result = await registrarApi.searchPackagesOnRegistry({
+      const result = await profileRegistryApi.searchProfilesOnRegistry({
         query: "custom",
         registryUrl: "https://custom.registry.com",
       });
 
       expect(result).toEqual(mockPackages);
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://custom.registry.com/api/packages/search?q=custom",
+        "https://custom.registry.com/profiles/search?q=custom",
         expect.objectContaining({
           method: "GET",
         }),
@@ -472,14 +472,14 @@ describe("registrarApi", () => {
         json: () => Promise.resolve([]),
       });
 
-      await registrarApi.searchPackagesOnRegistry({
+      await profileRegistryApi.searchProfilesOnRegistry({
         query: "test",
         registryUrl: "https://private.registry.com",
         authToken: "secret-token-123",
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://private.registry.com/api/packages/search?q=test",
+        "https://private.registry.com/profiles/search?q=test",
         expect.objectContaining({
           method: "GET",
           headers: expect.objectContaining({
@@ -495,7 +495,7 @@ describe("registrarApi", () => {
         json: () => Promise.resolve([]),
       });
 
-      await registrarApi.searchPackagesOnRegistry({
+      await profileRegistryApi.searchProfilesOnRegistry({
         query: "test",
         registryUrl: "https://public.registry.com",
         authToken: null,
@@ -511,7 +511,7 @@ describe("registrarApi", () => {
         json: () => Promise.resolve([]),
       });
 
-      await registrarApi.searchPackagesOnRegistry({
+      await profileRegistryApi.searchProfilesOnRegistry({
         query: "test",
         registryUrl: "https://custom.registry.com",
         limit: 5,
@@ -519,7 +519,7 @@ describe("registrarApi", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://custom.registry.com/api/packages/search?q=test&limit=5&offset=10",
+        "https://custom.registry.com/profiles/search?q=test&limit=5&offset=10",
         expect.anything(),
       );
     });
@@ -532,7 +532,7 @@ describe("registrarApi", () => {
       });
 
       await expect(
-        registrarApi.searchPackagesOnRegistry({
+        profileRegistryApi.searchProfilesOnRegistry({
           query: "test",
           registryUrl: "https://private.registry.com",
           authToken: "invalid-token",
@@ -557,8 +557,8 @@ describe("registrarApi", () => {
       });
 
       const archiveData = new ArrayBuffer(100);
-      const result = await registrarApi.uploadProfile({
-        packageName: "test-profile",
+      const result = await profileRegistryApi.uploadProfile({
+        profileName: "test-profile",
         version: "1.0.0",
         archiveData,
         authToken: "test-token",
@@ -566,7 +566,7 @@ describe("registrarApi", () => {
 
       expect(result).toEqual(mockResponse);
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://registrar.tilework.tech/api/packages/test-profile/profile",
+        "https://registrar.tilework.tech/profiles/test-profile/profile",
         expect.objectContaining({
           method: "PUT",
           headers: expect.objectContaining({
@@ -595,8 +595,8 @@ describe("registrarApi", () => {
       });
 
       const archiveData = new ArrayBuffer(100);
-      await registrarApi.uploadProfile({
-        packageName: "test-profile",
+      await profileRegistryApi.uploadProfile({
+        profileName: "test-profile",
         version: "1.0.0",
         archiveData,
         description: "Custom description",
@@ -618,8 +618,8 @@ describe("registrarApi", () => {
 
       const archiveData = new ArrayBuffer(100);
       await expect(
-        registrarApi.uploadProfile({
-          packageName: "test-profile",
+        profileRegistryApi.uploadProfile({
+          profileName: "test-profile",
           version: "1.0.0",
           archiveData,
           authToken: "invalid-token",
@@ -639,8 +639,8 @@ describe("registrarApi", () => {
 
       const archiveData = new ArrayBuffer(100);
       await expect(
-        registrarApi.uploadProfile({
-          packageName: "test-profile",
+        profileRegistryApi.uploadProfile({
+          profileName: "test-profile",
           version: "1.0.0",
           archiveData,
           authToken: "test-token",
@@ -660,8 +660,8 @@ describe("registrarApi", () => {
 
       const archiveData = new ArrayBuffer(100);
       await expect(
-        registrarApi.uploadProfile({
-          packageName: "test-profile",
+        profileRegistryApi.uploadProfile({
+          profileName: "test-profile",
           version: "1.0.0",
           archiveData,
           authToken: "test-token",
@@ -679,8 +679,8 @@ describe("registrarApi", () => {
 
       const archiveData = new ArrayBuffer(100);
       await expect(
-        registrarApi.uploadProfile({
-          packageName: "test-profile",
+        profileRegistryApi.uploadProfile({
+          profileName: "test-profile",
           version: "1.0.0",
           archiveData,
           authToken: "test-token",
@@ -702,8 +702,8 @@ describe("registrarApi", () => {
       });
 
       const archiveData = new ArrayBuffer(100);
-      await registrarApi.uploadProfile({
-        packageName: "test-profile",
+      await profileRegistryApi.uploadProfile({
+        profileName: "test-profile",
         version: "1.0.0",
         archiveData,
         authToken: "test-token",
@@ -711,7 +711,7 @@ describe("registrarApi", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://private-registry.example.com/api/packages/test-profile/profile",
+        "https://private-registry.example.com/profiles/test-profile/profile",
         expect.objectContaining({
           method: "PUT",
           headers: expect.objectContaining({
@@ -721,7 +721,7 @@ describe("registrarApi", () => {
       );
     });
 
-    it("should default to REGISTRAR_URL when registryUrl not provided", async () => {
+    it("should default to PROFILE_REGISTRY_URL when registryUrl not provided", async () => {
       const mockResponse = {
         name: "test-profile",
         version: "1.0.0",
@@ -735,15 +735,15 @@ describe("registrarApi", () => {
       });
 
       const archiveData = new ArrayBuffer(100);
-      await registrarApi.uploadProfile({
-        packageName: "test-profile",
+      await profileRegistryApi.uploadProfile({
+        profileName: "test-profile",
         version: "1.0.0",
         archiveData,
         authToken: "test-token",
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://registrar.tilework.tech/api/packages/test-profile/profile",
+        "https://registrar.tilework.tech/profiles/test-profile/profile",
         expect.anything(),
       );
     });

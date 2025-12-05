@@ -10,10 +10,10 @@ import * as tar from "tar";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 // Mock the registrar API
-vi.mock("@/api/registrar.js", () => ({
-  REGISTRAR_URL: "https://registrar.tilework.tech",
-  registrarApi: {
-    getPackument: vi.fn(),
+vi.mock("@/api/profileRegistry.js", () => ({
+  PROFILE_REGISTRY_URL: "https://registrar.tilework.tech",
+  profileRegistryApi: {
+    getProfileMetadata: vi.fn(),
     downloadTarball: vi.fn(),
   },
 }));
@@ -37,11 +37,11 @@ const mockConsoleError = vi
   .spyOn(console, "error")
   .mockImplementation(() => undefined);
 
-import { registrarApi, REGISTRAR_URL } from "@/api/registrar.js";
 import { getRegistryAuthToken } from "@/api/registryAuth.js";
 import { loadConfig, getRegistryAuth } from "@/installer/config.js";
 
 import { registryDownloadMain } from "./registryDownload.js";
+import { profileRegistryApi, PROFILE_REGISTRY_URL } from "@/api/profileRegistry.js";
 
 describe("registry-download", () => {
   let testDir: string;
@@ -87,26 +87,26 @@ describe("registry-download", () => {
         registryAuths: [],
       });
 
-      // Mock getPackument to return package info
-      vi.mocked(registrarApi.getPackument).mockResolvedValue({
+      // Mock getProfileMetadata to return package info
+      vi.mocked(profileRegistryApi.getProfileMetadata).mockResolvedValue({
         name: "test-profile",
         "dist-tags": { latest: "1.0.0" },
         versions: { "1.0.0": { name: "test-profile", version: "1.0.0" } },
       });
 
       const mockTarball = await createMockTarball();
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       await registryDownloadMain({
-        packageSpec: "test-profile",
+        profileSpec: "test-profile",
         cwd: testDir,
       });
 
       // Verify API was called with registry URL
-      expect(registrarApi.downloadTarball).toHaveBeenCalledWith({
-        packageName: "test-profile",
+      expect(profileRegistryApi.downloadTarball).toHaveBeenCalledWith({
+        profileName: "test-profile",
         version: undefined,
-        registryUrl: REGISTRAR_URL,
+        registryUrl: PROFILE_REGISTRY_URL,
         authToken: undefined,
       });
 
@@ -137,26 +137,26 @@ describe("registry-download", () => {
         registryAuths: [],
       });
 
-      // Mock getPackument to return package info
-      vi.mocked(registrarApi.getPackument).mockResolvedValue({
+      // Mock getProfileMetadata to return package info
+      vi.mocked(profileRegistryApi.getProfileMetadata).mockResolvedValue({
         name: "test-profile",
         "dist-tags": { latest: "2.0.0" },
         versions: { "2.0.0": { name: "test-profile", version: "2.0.0" } },
       });
 
       const mockTarball = await createMockTarball();
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       await registryDownloadMain({
-        packageSpec: "test-profile@2.0.0",
+        profileSpec: "test-profile@2.0.0",
         cwd: testDir,
       });
 
       // Verify version was passed to API with registry URL
-      expect(registrarApi.downloadTarball).toHaveBeenCalledWith({
-        packageName: "test-profile",
+      expect(profileRegistryApi.downloadTarball).toHaveBeenCalledWith({
+        profileName: "test-profile",
         version: "2.0.0",
-        registryUrl: REGISTRAR_URL,
+        registryUrl: PROFILE_REGISTRY_URL,
         authToken: undefined,
       });
     });
@@ -167,7 +167,7 @@ describe("registry-download", () => {
       await fs.mkdir(existingProfileDir, { recursive: true });
 
       await registryDownloadMain({
-        packageSpec: "existing-profile",
+        profileSpec: "existing-profile",
         cwd: testDir,
       });
 
@@ -186,7 +186,7 @@ describe("registry-download", () => {
 
       try {
         await registryDownloadMain({
-          packageSpec: "test-profile",
+          profileSpec: "test-profile",
           cwd: noInstallDir,
         });
 
@@ -211,7 +211,7 @@ describe("registry-download", () => {
       );
 
       await registryDownloadMain({
-        packageSpec: "test-profile",
+        profileSpec: "test-profile",
         cwd: nestedDir,
       });
 
@@ -223,12 +223,12 @@ describe("registry-download", () => {
     });
 
     it("should handle download errors gracefully", async () => {
-      vi.mocked(registrarApi.downloadTarball).mockRejectedValue(
+      vi.mocked(profileRegistryApi.downloadTarball).mockRejectedValue(
         new Error("Network error: Failed to fetch"),
       );
 
       await registryDownloadMain({
-        packageSpec: "test-profile",
+        profileSpec: "test-profile",
         cwd: testDir,
       });
 
@@ -242,10 +242,10 @@ describe("registry-download", () => {
 
     it("should support gzipped tarballs", async () => {
       const mockTarball = await createMockTarball({ gzip: true });
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       await registryDownloadMain({
-        packageSpec: "gzipped-profile",
+        profileSpec: "gzipped-profile",
         cwd: testDir,
       });
 
@@ -272,11 +272,11 @@ describe("registry-download", () => {
       );
 
       const mockTarball = await createMockTarball();
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       try {
         await registryDownloadMain({
-          packageSpec: "custom-profile",
+          profileSpec: "custom-profile",
           installDir: customInstallDir,
         });
 
@@ -310,8 +310,8 @@ describe("registry-download", () => {
       vi.mocked(getRegistryAuthToken).mockResolvedValue("mock-auth-token");
 
       // Package only exists in public registry
-      vi.mocked(registrarApi.getPackument).mockImplementation(async (args) => {
-        if (args.registryUrl === REGISTRAR_URL) {
+      vi.mocked(profileRegistryApi.getProfileMetadata).mockImplementation(async (args) => {
+        if (args.registryUrl === PROFILE_REGISTRY_URL) {
           return {
             name: "test-profile",
             "dist-tags": { latest: "1.0.0" },
@@ -322,20 +322,20 @@ describe("registry-download", () => {
       });
 
       const mockTarball = await createMockTarball();
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       await registryDownloadMain({
-        packageSpec: "test-profile",
+        profileSpec: "test-profile",
         cwd: testDir,
       });
 
       // Verify both registries were searched
-      expect(registrarApi.getPackument).toHaveBeenCalledWith({
-        packageName: "test-profile",
-        registryUrl: REGISTRAR_URL,
+      expect(profileRegistryApi.getProfileMetadata).toHaveBeenCalledWith({
+        profileName: "test-profile",
+        registryUrl: PROFILE_REGISTRY_URL,
       });
-      expect(registrarApi.getPackument).toHaveBeenCalledWith({
-        packageName: "test-profile",
+      expect(profileRegistryApi.getProfileMetadata).toHaveBeenCalledWith({
+        profileName: "test-profile",
         registryUrl: privateRegistryUrl,
         authToken: "mock-auth-token",
       });
@@ -365,8 +365,8 @@ describe("registry-download", () => {
       vi.mocked(getRegistryAuthToken).mockResolvedValue("mock-auth-token");
 
       // Package exists in BOTH registries
-      vi.mocked(registrarApi.getPackument).mockImplementation(async (args) => {
-        if (args.registryUrl === REGISTRAR_URL) {
+      vi.mocked(profileRegistryApi.getProfileMetadata).mockImplementation(async (args) => {
+        if (args.registryUrl === PROFILE_REGISTRY_URL) {
           return {
             name: "test-profile",
             description: "Public version",
@@ -390,7 +390,7 @@ describe("registry-download", () => {
       });
 
       await registryDownloadMain({
-        packageSpec: "test-profile",
+        profileSpec: "test-profile",
         cwd: testDir,
       });
 
@@ -399,12 +399,12 @@ describe("registry-download", () => {
         .map((call) => call.join(" "))
         .join("\n");
       expect(allErrorOutput.toLowerCase()).toContain("multiple");
-      expect(allErrorOutput).toContain(REGISTRAR_URL);
+      expect(allErrorOutput).toContain(PROFILE_REGISTRY_URL);
       expect(allErrorOutput).toContain(privateRegistryUrl);
       expect(allErrorOutput).toContain("--registry");
 
       // Verify no download occurred
-      expect(registrarApi.downloadTarball).not.toHaveBeenCalled();
+      expect(profileRegistryApi.downloadTarball).not.toHaveBeenCalled();
     });
 
     it("should download from single registry when package only in one", async () => {
@@ -426,7 +426,7 @@ describe("registry-download", () => {
       vi.mocked(getRegistryAuthToken).mockResolvedValue("mock-auth-token");
 
       // Package only exists in private registry
-      vi.mocked(registrarApi.getPackument).mockImplementation(async (args) => {
+      vi.mocked(profileRegistryApi.getProfileMetadata).mockImplementation(async (args) => {
         if (args.registryUrl === privateRegistryUrl) {
           return {
             name: "private-profile",
@@ -440,16 +440,16 @@ describe("registry-download", () => {
       });
 
       const mockTarball = await createMockTarball();
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       await registryDownloadMain({
-        packageSpec: "private-profile",
+        profileSpec: "private-profile",
         cwd: testDir,
       });
 
       // Verify download was from private registry with auth
-      expect(registrarApi.downloadTarball).toHaveBeenCalledWith({
-        packageName: "private-profile",
+      expect(profileRegistryApi.downloadTarball).toHaveBeenCalledWith({
+        profileName: "private-profile",
         version: undefined,
         registryUrl: privateRegistryUrl,
         authToken: "mock-auth-token",
@@ -475,33 +475,33 @@ describe("registry-download", () => {
       });
 
       // Package exists in public registry
-      vi.mocked(registrarApi.getPackument).mockResolvedValue({
+      vi.mocked(profileRegistryApi.getProfileMetadata).mockResolvedValue({
         name: "test-profile",
         "dist-tags": { latest: "1.0.0" },
         versions: { "1.0.0": { name: "test-profile", version: "1.0.0" } },
       });
 
       const mockTarball = await createMockTarball();
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       await registryDownloadMain({
-        packageSpec: "test-profile",
+        profileSpec: "test-profile",
         cwd: testDir,
-        registryUrl: REGISTRAR_URL,
+        registryUrl: PROFILE_REGISTRY_URL,
       });
 
       // Verify only public registry was searched (no auth token)
-      expect(registrarApi.getPackument).toHaveBeenCalledTimes(1);
-      expect(registrarApi.getPackument).toHaveBeenCalledWith({
-        packageName: "test-profile",
-        registryUrl: REGISTRAR_URL,
+      expect(profileRegistryApi.getProfileMetadata).toHaveBeenCalledTimes(1);
+      expect(profileRegistryApi.getProfileMetadata).toHaveBeenCalledWith({
+        profileName: "test-profile",
+        registryUrl: PROFILE_REGISTRY_URL,
       });
 
       // Verify download was from public registry
-      expect(registrarApi.downloadTarball).toHaveBeenCalledWith({
-        packageName: "test-profile",
+      expect(profileRegistryApi.downloadTarball).toHaveBeenCalledWith({
+        profileName: "test-profile",
         version: undefined,
-        registryUrl: REGISTRAR_URL,
+        registryUrl: PROFILE_REGISTRY_URL,
         authToken: undefined,
       });
     });
@@ -532,32 +532,32 @@ describe("registry-download", () => {
       vi.mocked(getRegistryAuthToken).mockResolvedValue("mock-auth-token");
 
       // Package exists in private registry
-      vi.mocked(registrarApi.getPackument).mockResolvedValue({
+      vi.mocked(profileRegistryApi.getProfileMetadata).mockResolvedValue({
         name: "private-profile",
         "dist-tags": { latest: "1.0.0" },
         versions: { "1.0.0": { name: "private-profile", version: "1.0.0" } },
       });
 
       const mockTarball = await createMockTarball();
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       await registryDownloadMain({
-        packageSpec: "private-profile",
+        profileSpec: "private-profile",
         cwd: testDir,
         registryUrl: privateRegistryUrl,
       });
 
       // Verify only private registry was searched with auth
-      expect(registrarApi.getPackument).toHaveBeenCalledTimes(1);
-      expect(registrarApi.getPackument).toHaveBeenCalledWith({
-        packageName: "private-profile",
+      expect(profileRegistryApi.getProfileMetadata).toHaveBeenCalledTimes(1);
+      expect(profileRegistryApi.getProfileMetadata).toHaveBeenCalledWith({
+        profileName: "private-profile",
         registryUrl: privateRegistryUrl,
         authToken: "mock-auth-token",
       });
 
       // Verify download was from private registry with auth
-      expect(registrarApi.downloadTarball).toHaveBeenCalledWith({
-        packageName: "private-profile",
+      expect(profileRegistryApi.downloadTarball).toHaveBeenCalledWith({
+        profileName: "private-profile",
         version: undefined,
         registryUrl: privateRegistryUrl,
         authToken: "mock-auth-token",
@@ -577,7 +577,7 @@ describe("registry-download", () => {
       vi.mocked(getRegistryAuth).mockReturnValue(null);
 
       await registryDownloadMain({
-        packageSpec: "private-profile",
+        profileSpec: "private-profile",
         cwd: testDir,
         registryUrl: privateRegistryUrl,
       });
@@ -589,7 +589,7 @@ describe("registry-download", () => {
       expect(allErrorOutput.toLowerCase()).toContain("auth");
 
       // Verify no download occurred
-      expect(registrarApi.downloadTarball).not.toHaveBeenCalled();
+      expect(profileRegistryApi.downloadTarball).not.toHaveBeenCalled();
     });
 
     it("should work when config is null (only searches public registry)", async () => {
@@ -597,25 +597,25 @@ describe("registry-download", () => {
       vi.mocked(loadConfig).mockResolvedValue(null);
 
       // Package exists in public registry
-      vi.mocked(registrarApi.getPackument).mockResolvedValue({
+      vi.mocked(profileRegistryApi.getProfileMetadata).mockResolvedValue({
         name: "test-profile",
         "dist-tags": { latest: "1.0.0" },
         versions: { "1.0.0": { name: "test-profile", version: "1.0.0" } },
       });
 
       const mockTarball = await createMockTarball();
-      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(mockTarball);
+      vi.mocked(profileRegistryApi.downloadTarball).mockResolvedValue(mockTarball);
 
       await registryDownloadMain({
-        packageSpec: "test-profile",
+        profileSpec: "test-profile",
         cwd: testDir,
       });
 
       // Verify only public registry was searched
-      expect(registrarApi.getPackument).toHaveBeenCalledTimes(1);
-      expect(registrarApi.getPackument).toHaveBeenCalledWith({
-        packageName: "test-profile",
-        registryUrl: REGISTRAR_URL,
+      expect(profileRegistryApi.getProfileMetadata).toHaveBeenCalledTimes(1);
+      expect(profileRegistryApi.getProfileMetadata).toHaveBeenCalledWith({
+        profileName: "test-profile",
+        registryUrl: PROFILE_REGISTRY_URL,
       });
 
       // Verify download succeeded
@@ -643,12 +643,12 @@ describe("registry-download", () => {
       vi.mocked(getRegistryAuthToken).mockResolvedValue("mock-auth-token");
 
       // Package not found in any registry
-      vi.mocked(registrarApi.getPackument).mockRejectedValue(
+      vi.mocked(profileRegistryApi.getProfileMetadata).mockRejectedValue(
         new Error("Not found"),
       );
 
       await registryDownloadMain({
-        packageSpec: "nonexistent-profile",
+        profileSpec: "nonexistent-profile",
         cwd: testDir,
       });
 
@@ -659,7 +659,7 @@ describe("registry-download", () => {
       expect(allErrorOutput.toLowerCase()).toContain("not found");
 
       // Verify no download occurred
-      expect(registrarApi.downloadTarball).not.toHaveBeenCalled();
+      expect(profileRegistryApi.downloadTarball).not.toHaveBeenCalled();
     });
   });
 });

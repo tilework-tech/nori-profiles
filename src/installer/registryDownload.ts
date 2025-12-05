@@ -1,6 +1,6 @@
 /**
- * CLI command for downloading profile packages from the Nori registrar
- * Handles: nori-ai registry-download <package>[@version] [--registry <url>]
+ * CLI command for downloading profiles from the Nori profile registry
+ * Handles: nori-ai registry-download <profile>[@version] [--registry <url>]
  */
 
 import * as fs from "fs/promises";
@@ -11,36 +11,39 @@ import zlib from "zlib";
 
 import * as tar from "tar";
 
-import { registrarApi, REGISTRAR_URL } from "@/api/registrar.js";
+import {
+  profileRegistryApi,
+  PROFILE_REGISTRY_URL,
+} from "@/api/profileRegistry.js";
 import { getRegistryAuthToken } from "@/api/registryAuth.js";
 import { loadConfig, getRegistryAuth } from "@/installer/config.js";
 import { error, success, info } from "@/installer/logger.js";
 import { getInstallDirs } from "@/utils/path.js";
 
-import type { Packument } from "@/api/registrar.js";
+import type { ProfileMetadata } from "@/api/profileRegistry.js";
 import type { Config } from "@/installer/config.js";
 import type { Command } from "commander";
 
 /**
- * Parse package name and optional version from package spec
- * Supports formats: "package-name" or "package-name@1.0.0"
+ * Parse profile name and optional version from profile spec
+ * Supports formats: "profile-name" or "profile-name@1.0.0"
  * @param args - The parsing parameters
- * @param args.packageSpec - Package specification string
+ * @param args.profileSpec - Profile specification string
  *
- * @returns Parsed package name and optional version
+ * @returns Parsed profile name and optional version
  */
-const parsePackageSpec = (args: {
-  packageSpec: string;
-}): { packageName: string; version?: string | null } => {
-  const { packageSpec } = args;
-  const match = packageSpec.match(/^([a-z0-9-]+)(?:@(\d+\.\d+\.\d+.*))?$/i);
+const parseProfileSpec = (args: {
+  profileSpec: string;
+}): { profileName: string; version?: string | null } => {
+  const { profileSpec } = args;
+  const match = profileSpec.match(/^([a-z0-9-]+)(?:@(\d+\.\d+\.\d+.*))?$/i);
 
   if (!match) {
-    return { packageName: packageSpec, version: null };
+    return { profileName: profileSpec, version: null };
   }
 
   return {
-    packageName: match[1],
+    profileName: match[1],
     version: match[2] ?? null,
   };
 };
@@ -84,42 +87,42 @@ const extractTarball = async (args: {
 };
 
 /**
- * Result of searching for a package in a registry
+ * Result of searching for a profile in a registry
  */
 type RegistrySearchResult = {
   registryUrl: string;
-  packument: Packument;
+  profileMetadata: ProfileMetadata;
   authToken?: string | null;
 };
 
 /**
- * Search all registries for a package
+ * Search all registries for a profile
  * Public registry is searched without auth, private registries require auth
  * @param args - The search parameters
- * @param args.packageName - The package name to search for
+ * @param args.profileName - The profile name to search for
  * @param args.config - The Nori configuration containing registry auth
  *
- * @returns Array of registries where the package was found
+ * @returns Array of registries where the profile was found
  */
 const searchAllRegistries = async (args: {
-  packageName: string;
+  profileName: string;
   config: Config | null;
 }): Promise<Array<RegistrySearchResult>> => {
-  const { packageName, config } = args;
+  const { profileName, config } = args;
   const results: Array<RegistrySearchResult> = [];
 
   // Search public registry first (no auth needed)
   try {
-    const packument = await registrarApi.getPackument({
-      packageName,
-      registryUrl: REGISTRAR_URL,
+    const profileMetadata = await profileRegistryApi.getProfileMetadata({
+      profileName,
+      registryUrl: PROFILE_REGISTRY_URL,
     });
     results.push({
-      registryUrl: REGISTRAR_URL,
-      packument,
+      registryUrl: PROFILE_REGISTRY_URL,
+      profileMetadata,
     });
   } catch {
-    // Package not found in public registry - continue to private registries
+    // Profile not found in public registry - continue to private registries
   }
 
   // Search private registries from config (auth required)
@@ -129,19 +132,19 @@ const searchAllRegistries = async (args: {
         // Get auth token for this registry
         const authToken = await getRegistryAuthToken({ registryAuth });
 
-        const packument = await registrarApi.getPackument({
-          packageName,
+        const profileMetadata = await profileRegistryApi.getProfileMetadata({
+          profileName,
           registryUrl: registryAuth.registryUrl,
           authToken,
         });
 
         results.push({
           registryUrl: registryAuth.registryUrl,
-          packument,
+          profileMetadata,
           authToken,
         });
       } catch {
-        // Package not found or auth failed for this registry - continue
+        // Profile not found or auth failed for this registry - continue
       }
     }
   }
@@ -150,31 +153,31 @@ const searchAllRegistries = async (args: {
 };
 
 /**
- * Search a specific registry for a package
+ * Search a specific registry for a profile
  * @param args - The search parameters
- * @param args.packageName - The package name to search for
+ * @param args.profileName - The profile name to search for
  * @param args.registryUrl - The registry URL to search
  * @param args.config - The Nori configuration containing registry auth
  *
  * @returns The search result or null if not found or no auth configured
  */
 const searchSpecificRegistry = async (args: {
-  packageName: string;
+  profileName: string;
   registryUrl: string;
   config: Config | null;
 }): Promise<RegistrySearchResult | null> => {
-  const { packageName, registryUrl, config } = args;
+  const { profileName, registryUrl, config } = args;
 
   // Check if this is the public registry
-  if (registryUrl === REGISTRAR_URL) {
+  if (registryUrl === PROFILE_REGISTRY_URL) {
     try {
-      const packument = await registrarApi.getPackument({
-        packageName,
-        registryUrl: REGISTRAR_URL,
+      const profileMetadata = await profileRegistryApi.getProfileMetadata({
+        profileName,
+        registryUrl: PROFILE_REGISTRY_URL,
       });
       return {
-        registryUrl: REGISTRAR_URL,
-        packument,
+        registryUrl: PROFILE_REGISTRY_URL,
+        profileMetadata,
       };
     } catch {
       return null;
@@ -193,14 +196,14 @@ const searchSpecificRegistry = async (args: {
 
   try {
     const authToken = await getRegistryAuthToken({ registryAuth });
-    const packument = await registrarApi.getPackument({
-      packageName,
+    const profileMetadata = await profileRegistryApi.getProfileMetadata({
+      profileName,
       registryUrl,
       authToken,
     });
     return {
       registryUrl,
-      packument,
+      profileMetadata,
       authToken,
     };
   } catch {
@@ -209,32 +212,32 @@ const searchSpecificRegistry = async (args: {
 };
 
 /**
- * Format the multiple packages found error message
+ * Format the multiple profiles found error message
  * @param args - The format parameters
- * @param args.packageName - The package name that was searched
+ * @param args.profileName - The profile name that was searched
  * @param args.results - The search results from multiple registries
  *
  * @returns Formatted error message
  */
-const formatMultiplePackagesError = (args: {
-  packageName: string;
+const formatMultipleProfilesError = (args: {
+  profileName: string;
   results: Array<RegistrySearchResult>;
 }): string => {
-  const { packageName, results } = args;
+  const { profileName, results } = args;
 
-  const lines = ["Multiple packages with the same name found.\n"];
+  const lines = ["Multiple profiles with the same name found.\n"];
 
   for (const result of results) {
-    const version = result.packument["dist-tags"].latest ?? "unknown";
-    const description = result.packument.description ?? "";
+    const version = result.profileMetadata["dist-tags"].latest ?? "unknown";
+    const description = result.profileMetadata.description ?? "";
     lines.push(result.registryUrl);
-    lines.push(`  -> ${packageName}@${version}: ${description}\n`);
+    lines.push(`  -> ${profileName}@${version}: ${description}\n`);
   }
 
   lines.push("To download, please specify the registry with --registry:");
   for (const result of results) {
     lines.push(
-      `nori-ai registry-download ${packageName} --registry ${result.registryUrl}`,
+      `nori-ai registry-download ${profileName} --registry ${result.registryUrl}`,
     );
   }
 
@@ -242,23 +245,23 @@ const formatMultiplePackagesError = (args: {
 };
 
 /**
- * Download and install a profile from the registrar
+ * Download and install a profile from the registry
  * @param args - The download parameters
- * @param args.packageSpec - Package name with optional version (e.g., "my-profile" or "my-profile@1.0.0")
+ * @param args.profileSpec - Profile name with optional version (e.g., "my-profile" or "my-profile@1.0.0")
  * @param args.cwd - Current working directory (defaults to process.cwd())
  * @param args.installDir - Optional explicit install directory
  * @param args.registryUrl - Optional registry URL to download from
  */
 export const registryDownloadMain = async (args: {
-  packageSpec: string;
+  profileSpec: string;
   cwd?: string | null;
   installDir?: string | null;
   registryUrl?: string | null;
 }): Promise<void> => {
-  const { packageSpec, installDir, registryUrl } = args;
+  const { profileSpec, installDir, registryUrl } = args;
   const cwd = args.cwd ?? process.cwd();
 
-  const { packageName, version } = parsePackageSpec({ packageSpec });
+  const { profileName, version } = parseProfileSpec({ profileSpec });
 
   // Find installation directory
   let targetInstallDir: string;
@@ -293,13 +296,13 @@ export const registryDownloadMain = async (args: {
   }
 
   const profilesDir = path.join(targetInstallDir, ".claude", "profiles");
-  const targetDir = path.join(profilesDir, packageName);
+  const targetDir = path.join(profilesDir, profileName);
 
   // Check if profile already exists
   try {
     await fs.access(targetDir);
     error({
-      message: `Profile "${packageName}" already exists at:\n${targetDir}\n\nTo reinstall, first remove the existing profile directory.`,
+      message: `Profile "${profileName}" already exists at:\n${targetDir}\n\nTo reinstall, first remove the existing profile directory.`,
     });
     return;
   } catch {
@@ -309,13 +312,13 @@ export const registryDownloadMain = async (args: {
   // Load config to get registry authentication
   const config = await loadConfig({ installDir: targetInstallDir });
 
-  // Search for the package
+  // Search for the profile
   let searchResults: Array<RegistrySearchResult>;
 
   if (registryUrl != null) {
     // User specified a specific registry
     // Check if private registry requires auth
-    if (registryUrl !== REGISTRAR_URL) {
+    if (registryUrl !== PROFILE_REGISTRY_URL) {
       const registryAuth =
         config != null ? getRegistryAuth({ config, registryUrl }) : null;
       if (registryAuth == null) {
@@ -327,28 +330,28 @@ export const registryDownloadMain = async (args: {
     }
 
     const result = await searchSpecificRegistry({
-      packageName,
+      profileName,
       registryUrl,
       config,
     });
     searchResults = result != null ? [result] : [];
   } else {
     // Search all registries
-    searchResults = await searchAllRegistries({ packageName, config });
+    searchResults = await searchAllRegistries({ profileName, config });
   }
 
   // Handle search results
   if (searchResults.length === 0) {
     error({
-      message: `Profile "${packageName}" not found in any registry.`,
+      message: `Profile "${profileName}" not found in any registry.`,
     });
     return;
   }
 
   if (searchResults.length > 1) {
     error({
-      message: formatMultiplePackagesError({
-        packageName,
+      message: formatMultipleProfilesError({
+        profileName,
         results: searchResults,
       }),
     });
@@ -360,10 +363,10 @@ export const registryDownloadMain = async (args: {
 
   // Download and extract the tarball
   try {
-    info({ message: `Downloading profile "${packageName}"...` });
+    info({ message: `Downloading profile "${profileName}"...` });
 
-    const tarballData = await registrarApi.downloadTarball({
-      packageName,
+    const tarballData = await profileRegistryApi.downloadTarball({
+      profileName,
       version: version ?? undefined,
       registryUrl: selectedRegistry.registryUrl,
       authToken: selectedRegistry.authToken ?? undefined,
@@ -383,17 +386,17 @@ export const registryDownloadMain = async (args: {
     const versionStr = version ? `@${version}` : " (latest)";
     console.log("");
     success({
-      message: `Downloaded and installed profile "${packageName}"${versionStr}`,
+      message: `Downloaded and installed profile "${profileName}"${versionStr}`,
     });
     info({ message: `Installed to: ${targetDir}` });
     console.log("");
     info({
-      message: `You can now use this profile with 'nori-ai switch-profile ${packageName}'.`,
+      message: `You can now use this profile with 'nori-ai switch-profile ${profileName}'.`,
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     error({
-      message: `Failed to download profile "${packageName}": ${errorMessage}`,
+      message: `Failed to download profile "${profileName}": ${errorMessage}`,
     });
   }
 };
@@ -409,19 +412,19 @@ export const registerRegistryDownloadCommand = (args: {
   const { program } = args;
 
   program
-    .command("registry-download <package>")
+    .command("registry-download <profile>")
     .description(
-      "Download and install a profile package from the Nori registrar",
+      "Download and install a profile from the Nori profile registry",
     )
     .option(
       "--registry <url>",
       "Download from a specific registry URL instead of searching all registries",
     )
-    .action(async (packageSpec: string, options: { registry?: string }) => {
+    .action(async (profileSpec: string, options: { registry?: string }) => {
       const globalOpts = program.opts();
 
       await registryDownloadMain({
-        packageSpec,
+        profileSpec,
         installDir: globalOpts.installDir || null,
         registryUrl: options.registry || null,
       });

@@ -3,9 +3,9 @@ import { artifactsApi } from "@/api/artifacts.js";
 import { apiRequest } from "@/api/base.js";
 import { conversationApi } from "@/api/conversation.js";
 import { noridocsApi } from "@/api/noridocs.js";
+import { profileRegistryApi } from "@/api/profileRegistry.js";
 import { promptAnalysisApi } from "@/api/promptAnalysis.js";
 import { queryApi } from "@/api/query.js";
-import { registrarApi } from "@/api/registrar.js";
 
 /**
  * Response from handshake endpoint
@@ -34,7 +34,7 @@ export const apiClient = {
   noridocs: noridocsApi,
   promptAnalysis: promptAnalysisApi,
   query: queryApi,
-  registrar: registrarApi,
+  profileRegistry: profileRegistryApi,
   handshake,
 };
 
@@ -59,9 +59,9 @@ export type {
 } from "@/api/noridocs.js";
 export { ConfigManager } from "@/api/base.js";
 export type {
-  Package,
-  Packument,
-  SearchPackagesRequest,
-  GetPackumentRequest,
+  Profile,
+  ProfileMetadata,
+  SearchProfilesRequest,
+  GetProfileMetadataRequest,
   DownloadTarballRequest,
-} from "@/api/registrar.js";
+} from "@/api/profileRegistry.js";

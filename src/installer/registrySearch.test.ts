@@ -9,12 +9,12 @@ import * as path from "path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 // Mock the registrar API
-vi.mock("@/api/registrar.js", () => ({
-  registrarApi: {
-    searchPackages: vi.fn(),
-    searchPackagesOnRegistry: vi.fn(),
+vi.mock("@/api/profileRegistry.js", () => ({
+  profileRegistryApi: {
+    searchProfiles: vi.fn(),
+    searchProfilesOnRegistry: vi.fn(),
   },
-  REGISTRAR_URL: "https://registrar.tilework.tech",
+  PROFILE_REGISTRY_URL: "https://registrar.tilework.tech",
 }));
 
 // Mock the registry auth module
@@ -35,11 +35,11 @@ const mockConsoleError = vi
   .spyOn(console, "error")
   .mockImplementation(() => undefined);
 
-import { registrarApi, REGISTRAR_URL } from "@/api/registrar.js";
 import { getRegistryAuthToken } from "@/api/registryAuth.js";
 import { loadConfig } from "@/installer/config.js";
 
 import { registrySearchMain } from "./registrySearch.js";
+import { profileRegistryApi, PROFILE_REGISTRY_URL } from "@/api/profileRegistry.js";
 
 /**
  * Strip ANSI escape codes from a string for plain text comparison
@@ -118,23 +118,23 @@ describe("registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockResolvedValue(
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockResolvedValue(
         mockPackages,
       );
 
       await registrySearchMain({ query: "typescript", installDir: testDir });
 
-      // Verify searchPackagesOnRegistry was called with public registry
-      expect(registrarApi.searchPackagesOnRegistry).toHaveBeenCalledWith(
+      // Verify searchProfilesOnRegistry was called with public registry
+      expect(profileRegistryApi.searchProfilesOnRegistry).toHaveBeenCalledWith(
         expect.objectContaining({
           query: "typescript",
-          registryUrl: REGISTRAR_URL,
+          registryUrl: PROFILE_REGISTRY_URL,
         }),
       );
 
       const output = getAllOutput();
       // Should display the registry URL
-      expect(output).toContain(REGISTRAR_URL);
+      expect(output).toContain(PROFILE_REGISTRY_URL);
       // Should display packages with arrow notation
       expect(output).toContain("-> typescript-profile");
       expect(output).toContain("-> react-developer");
@@ -178,7 +178,7 @@ describe("registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry)
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry)
         .mockResolvedValueOnce(publicPackages)
         .mockResolvedValueOnce(privatePackages);
 
@@ -189,7 +189,7 @@ describe("registry-search", () => {
       const output = getAllOutput();
 
       // Should display both registry URLs
-      expect(output).toContain(REGISTRAR_URL);
+      expect(output).toContain(PROFILE_REGISTRY_URL);
       expect(output).toContain("https://private.registry.com");
 
       // Should display packages from both registries
@@ -197,10 +197,10 @@ describe("registry-search", () => {
       expect(output).toContain("-> private-profile");
 
       // Verify both registries were searched
-      expect(registrarApi.searchPackagesOnRegistry).toHaveBeenCalledTimes(2);
+      expect(profileRegistryApi.searchProfilesOnRegistry).toHaveBeenCalledTimes(2);
 
       // Verify private registry was called with auth token
-      expect(registrarApi.searchPackagesOnRegistry).toHaveBeenCalledWith(
+      expect(profileRegistryApi.searchProfilesOnRegistry).toHaveBeenCalledWith(
         expect.objectContaining({
           query: "test",
           registryUrl: "https://private.registry.com",
@@ -218,7 +218,7 @@ describe("registry-search", () => {
           {
             username: "user@example.com",
             password: "secret",
-            registryUrl: REGISTRAR_URL,
+            registryUrl: PROFILE_REGISTRY_URL,
           },
         ],
       });
@@ -234,14 +234,14 @@ describe("registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockResolvedValue(
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockResolvedValue(
         mockPackages,
       );
 
       await registrySearchMain({ query: "test", installDir: testDir });
 
       // Should only search once (public registry), not twice
-      expect(registrarApi.searchPackagesOnRegistry).toHaveBeenCalledTimes(1);
+      expect(profileRegistryApi.searchProfilesOnRegistry).toHaveBeenCalledTimes(1);
     });
 
     it("should continue searching other registries when one fails with error", async () => {
@@ -285,7 +285,7 @@ describe("registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry)
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry)
         .mockResolvedValueOnce(publicPackages)
         .mockResolvedValueOnce(workingPackages);
 
@@ -331,7 +331,7 @@ describe("registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry)
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry)
         .mockResolvedValueOnce(publicPackages)
         .mockResolvedValueOnce([]);
 
@@ -342,7 +342,7 @@ describe("registry-search", () => {
       const output = getAllOutput();
 
       // Should show public registry results
-      expect(output).toContain(REGISTRAR_URL);
+      expect(output).toContain(PROFILE_REGISTRY_URL);
       expect(output).toContain("-> public-profile");
 
       // Should NOT show empty registry URL
@@ -363,7 +363,7 @@ describe("registry-search", () => {
         ],
       });
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry)
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry)
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([]);
 
@@ -388,7 +388,7 @@ describe("registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockResolvedValue(
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockResolvedValue(
         mockPackages,
       );
 
@@ -413,7 +413,7 @@ describe("registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockResolvedValue(
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockResolvedValue(
         mockPackages,
       );
 
@@ -426,7 +426,7 @@ describe("registry-search", () => {
     });
 
     it("should handle API errors gracefully when public registry fails", async () => {
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockRejectedValue(
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockRejectedValue(
         new Error("Network error: Failed to fetch"),
       );
 
@@ -451,7 +451,7 @@ describe("registry-search", () => {
         ],
       });
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry)
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry)
         .mockRejectedValueOnce(new Error("Public registry down"))
         .mockRejectedValueOnce(new Error("Private registry down"));
 
@@ -461,7 +461,7 @@ describe("registry-search", () => {
 
       const output = getAllOutput();
       // Should show errors for both registries
-      expect(output).toContain(REGISTRAR_URL);
+      expect(output).toContain(PROFILE_REGISTRY_URL);
       expect(output).toContain("https://private.registry.com");
       expect(output).toContain("Error");
     });
@@ -479,17 +479,17 @@ describe("registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockResolvedValue(
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockResolvedValue(
         mockPackages,
       );
 
       await registrySearchMain({ query: "test", installDir: testDir });
 
       // Should only search public registry
-      expect(registrarApi.searchPackagesOnRegistry).toHaveBeenCalledTimes(1);
-      expect(registrarApi.searchPackagesOnRegistry).toHaveBeenCalledWith(
+      expect(profileRegistryApi.searchProfilesOnRegistry).toHaveBeenCalledTimes(1);
+      expect(profileRegistryApi.searchProfilesOnRegistry).toHaveBeenCalledWith(
         expect.objectContaining({
-          registryUrl: REGISTRAR_URL,
+          registryUrl: PROFILE_REGISTRY_URL,
         }),
       );
     });
@@ -508,17 +508,17 @@ describe("registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockResolvedValue(
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockResolvedValue(
         mockPackages,
       );
 
       await registrySearchMain({ query: "test", installDir: testDir });
 
       // Should only search public registry
-      expect(registrarApi.searchPackagesOnRegistry).toHaveBeenCalledTimes(1);
-      expect(registrarApi.searchPackagesOnRegistry).toHaveBeenCalledWith(
+      expect(profileRegistryApi.searchProfilesOnRegistry).toHaveBeenCalledTimes(1);
+      expect(profileRegistryApi.searchProfilesOnRegistry).toHaveBeenCalledWith(
         expect.objectContaining({
-          registryUrl: REGISTRAR_URL,
+          registryUrl: PROFILE_REGISTRY_URL,
         }),
       );
 

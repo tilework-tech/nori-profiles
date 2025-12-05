@@ -9,12 +9,12 @@ import * as path from "path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 // Mock the registrar API
-vi.mock("@/api/registrar.js", () => ({
-  registrarApi: {
-    searchPackages: vi.fn(),
-    searchPackagesOnRegistry: vi.fn(),
+vi.mock("@/api/profileRegistry.js", () => ({
+  profileRegistryApi: {
+    searchProfiles: vi.fn(),
+    searchProfilesOnRegistry: vi.fn(),
   },
-  REGISTRAR_URL: "https://registrar.tilework.tech",
+  PROFILE_REGISTRY_URL: "https://registrar.tilework.tech",
 }));
 
 // Mock the registry auth module
@@ -22,12 +22,12 @@ vi.mock("@/api/registryAuth.js", () => ({
   getRegistryAuthToken: vi.fn(),
 }));
 
-import { registrarApi, REGISTRAR_URL } from "@/api/registrar.js";
 import { getRegistryAuthToken } from "@/api/registryAuth.js";
 
 import type { HookInput } from "./types.js";
 
 import { noriRegistrySearch } from "./nori-registry-search.js";
+import { profileRegistryApi, PROFILE_REGISTRY_URL } from "@/api/profileRegistry.js";
 
 // ANSI color codes for verification
 const GREEN = "\x1b[0;32m";
@@ -183,7 +183,7 @@ describe("nori-registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockResolvedValue(
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockResolvedValue(
         mockPackages,
       );
 
@@ -200,16 +200,16 @@ describe("nori-registry-search", () => {
       expect(plainReason).toContain("A test profile");
 
       // Verify API was called with correct query
-      expect(registrarApi.searchPackagesOnRegistry).toHaveBeenCalledWith(
+      expect(profileRegistryApi.searchProfilesOnRegistry).toHaveBeenCalledWith(
         expect.objectContaining({
           query: "test",
-          registryUrl: REGISTRAR_URL,
+          registryUrl: PROFILE_REGISTRY_URL,
         }),
       );
     });
 
     it("should display no results message when empty", async () => {
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockResolvedValue([]);
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockResolvedValue([]);
 
       const input = createInput({
         prompt: "/nori-registry-search nonexistent",
@@ -222,7 +222,7 @@ describe("nori-registry-search", () => {
     });
 
     it("should handle network errors gracefully", async () => {
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockRejectedValue(
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockRejectedValue(
         new Error("Network error: Failed to fetch"),
       );
 
@@ -237,14 +237,14 @@ describe("nori-registry-search", () => {
     });
 
     it("should pass multi-word query to API", async () => {
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockResolvedValue([]);
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockResolvedValue([]);
 
       const input = createInput({
         prompt: "/nori-registry-search typescript react developer",
       });
       await noriRegistrySearch.run({ input });
 
-      expect(registrarApi.searchPackagesOnRegistry).toHaveBeenCalledWith(
+      expect(profileRegistryApi.searchProfilesOnRegistry).toHaveBeenCalledWith(
         expect.objectContaining({
           query: "typescript react developer",
         }),
@@ -265,7 +265,7 @@ describe("nori-registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockResolvedValue(
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockResolvedValue(
         mockPackages,
       );
 
@@ -280,7 +280,7 @@ describe("nori-registry-search", () => {
     });
 
     it("should format no results message with green color codes", async () => {
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockResolvedValue([]);
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockResolvedValue([]);
 
       const input = createInput({
         prompt: "/nori-registry-search nonexistent",
@@ -293,7 +293,7 @@ describe("nori-registry-search", () => {
     });
 
     it("should format error messages with red color codes", async () => {
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockRejectedValue(
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockRejectedValue(
         new Error("Network error"),
       );
 
@@ -352,7 +352,7 @@ describe("nori-registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockResolvedValue(
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockResolvedValue(
         mockPackages,
       );
 
@@ -365,15 +365,15 @@ describe("nori-registry-search", () => {
       expect(result!.decision).toBe("block");
       const plainReason = stripAnsi(result!.reason!);
       // Should display the registry URL
-      expect(plainReason).toContain(REGISTRAR_URL);
+      expect(plainReason).toContain(PROFILE_REGISTRY_URL);
       // Should display the package with arrow notation
       expect(plainReason).toContain("-> test-profile");
 
-      // Verify searchPackagesOnRegistry was called with public registry
-      expect(registrarApi.searchPackagesOnRegistry).toHaveBeenCalledWith(
+      // Verify searchProfilesOnRegistry was called with public registry
+      expect(profileRegistryApi.searchProfilesOnRegistry).toHaveBeenCalledWith(
         expect.objectContaining({
           query: "test",
-          registryUrl: REGISTRAR_URL,
+          registryUrl: PROFILE_REGISTRY_URL,
         }),
       );
     });
@@ -416,7 +416,7 @@ describe("nori-registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry)
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry)
         .mockResolvedValueOnce(publicPackages) // Public registry
         .mockResolvedValueOnce(privatePackages); // Private registry
 
@@ -431,7 +431,7 @@ describe("nori-registry-search", () => {
       const plainReason = stripAnsi(result!.reason!);
 
       // Should display both registry URLs
-      expect(plainReason).toContain(REGISTRAR_URL);
+      expect(plainReason).toContain(PROFILE_REGISTRY_URL);
       expect(plainReason).toContain("https://private.registry.com");
 
       // Should display packages from both registries
@@ -439,10 +439,10 @@ describe("nori-registry-search", () => {
       expect(plainReason).toContain("-> private-profile");
 
       // Verify both registries were searched
-      expect(registrarApi.searchPackagesOnRegistry).toHaveBeenCalledTimes(2);
+      expect(profileRegistryApi.searchProfilesOnRegistry).toHaveBeenCalledTimes(2);
 
       // Verify private registry was called with auth token
-      expect(registrarApi.searchPackagesOnRegistry).toHaveBeenCalledWith(
+      expect(profileRegistryApi.searchProfilesOnRegistry).toHaveBeenCalledWith(
         expect.objectContaining({
           query: "test",
           registryUrl: "https://private.registry.com",
@@ -461,7 +461,7 @@ describe("nori-registry-search", () => {
             {
               username: "user@example.com",
               password: "secret",
-              registryUrl: REGISTRAR_URL,
+              registryUrl: PROFILE_REGISTRY_URL,
             },
           ],
         }),
@@ -478,7 +478,7 @@ describe("nori-registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockResolvedValue(
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockResolvedValue(
         mockPackages,
       );
 
@@ -488,7 +488,7 @@ describe("nori-registry-search", () => {
       await noriRegistrySearch.run({ input });
 
       // Should only search once (public registry), not twice
-      expect(registrarApi.searchPackagesOnRegistry).toHaveBeenCalledTimes(1);
+      expect(profileRegistryApi.searchProfilesOnRegistry).toHaveBeenCalledTimes(1);
     });
 
     it("should continue searching other registries when one fails with error", async () => {
@@ -538,7 +538,7 @@ describe("nori-registry-search", () => {
       // 1. Public registry search (success) - no auth needed
       // 2. First private registry: auth token fails, so search never called
       // 3. Second private registry: auth token succeeds, search succeeds
-      vi.mocked(registrarApi.searchPackagesOnRegistry)
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry)
         .mockResolvedValueOnce(publicPackages) // Public registry
         .mockResolvedValueOnce(workingPackages); // Working private registry (failing one doesn't call search)
 
@@ -590,7 +590,7 @@ describe("nori-registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry)
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry)
         .mockResolvedValueOnce(publicPackages) // Public registry has results
         .mockResolvedValueOnce([]); // Private registry empty
 
@@ -605,7 +605,7 @@ describe("nori-registry-search", () => {
       const plainReason = stripAnsi(result!.reason!);
 
       // Should show public registry results
-      expect(plainReason).toContain(REGISTRAR_URL);
+      expect(plainReason).toContain(PROFILE_REGISTRY_URL);
       expect(plainReason).toContain("-> public-profile");
 
       // Should NOT show empty registry URL
@@ -628,7 +628,7 @@ describe("nori-registry-search", () => {
         }),
       );
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry)
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry)
         .mockResolvedValueOnce([]) // Public registry empty
         .mockResolvedValueOnce([]); // Private registry empty
 
@@ -656,7 +656,7 @@ describe("nori-registry-search", () => {
         },
       ];
 
-      vi.mocked(registrarApi.searchPackagesOnRegistry).mockResolvedValue(
+      vi.mocked(profileRegistryApi.searchProfilesOnRegistry).mockResolvedValue(
         mockPackages,
       );
 

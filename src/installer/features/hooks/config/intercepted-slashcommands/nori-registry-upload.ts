@@ -8,7 +8,7 @@ import * as path from "path";
 
 import * as tar from "tar";
 
-import { registrarApi } from "@/api/registrar.js";
+import { profileRegistryApi } from "@/api/profileRegistry.js";
 import { getRegistryAuthToken } from "@/api/registryAuth.js";
 import { loadConfig, getRegistryAuth } from "@/installer/config.js";
 import { getInstallDirs } from "@/utils/path.js";
@@ -175,7 +175,7 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
     return {
       decision: "block",
       reason: formatSuccess({
-        message: `Upload a profile to the Nori registry.\n\nUsage: /nori-registry-upload <profile-name> [version] [registry-url]\n\nExamples:\n  /nori-registry-upload my-profile\n  /nori-registry-upload my-profile 1.0.0\n  /nori-registry-upload my-profile https://registry.example.com\n  /nori-registry-upload my-profile 1.0.0 https://registry.example.com\n\nRequires registry authentication in .nori-config.json`,
+        message: `Upload a profile to the Nori profile registry.\n\nUsage: /nori-registry-upload <profile-name> [version] [registry-url]\n\nExamples:\n  /nori-registry-upload my-profile\n  /nori-registry-upload my-profile 1.0.0\n  /nori-registry-upload my-profile https://registry.example.com\n  /nori-registry-upload my-profile 1.0.0 https://registry.example.com\n\nRequires registry authentication in .nori-config.json`,
       }),
     };
   }
@@ -298,8 +298,8 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
     // Convert Buffer to ArrayBuffer
     const archiveData = new ArrayBuffer(tarballBuffer.byteLength);
     new Uint8Array(archiveData).set(tarballBuffer);
-    const result = await registrarApi.uploadProfile({
-      packageName: profileName,
+    const result = await profileRegistryApi.uploadProfile({
+      profileName,
       version: uploadVersion,
       archiveData,
       authToken,

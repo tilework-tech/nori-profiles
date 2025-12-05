@@ -1,10 +1,14 @@
 /**
- * Intercepted slash command for searching profile packages
+ * Intercepted slash command for searching profiles
  * Handles /nori-registry-search <query> command
  * Searches across all configured registries (public + private)
  */
 
-import { REGISTRAR_URL, registrarApi, type Package } from "@/api/registrar.js";
+import {
+  PROFILE_REGISTRY_URL,
+  profileRegistryApi,
+  type Profile,
+} from "@/api/profileRegistry.js";
 import { getRegistryAuthToken } from "@/api/registryAuth.js";
 import { loadConfig } from "@/installer/config.js";
 import { getInstallDirs } from "@/utils/path.js";
@@ -23,7 +27,7 @@ import { formatError, formatSuccess } from "./format.js";
  */
 type RegistrySearchResult = {
   registryUrl: string;
-  packages: Array<Package>;
+  profiles: Array<Profile>;
   error?: string | null;
 };
 
@@ -62,23 +66,23 @@ const searchAllRegistries = async (args: {
   const config = await loadConfig({ installDir });
 
   // Normalize public registry URL for comparison
-  const normalizedPublicUrl = normalizeUrl({ baseUrl: REGISTRAR_URL });
+  const normalizedPublicUrl = normalizeUrl({ baseUrl: PROFILE_REGISTRY_URL });
 
   // Track searched registries to avoid duplicates
   const searchedRegistries = new Set<string>();
 
   // Always search public registry (no auth required)
   try {
-    const packages = await registrarApi.searchPackagesOnRegistry({
+    const profiles = await profileRegistryApi.searchProfilesOnRegistry({
       query,
-      registryUrl: REGISTRAR_URL,
+      registryUrl: PROFILE_REGISTRY_URL,
     });
-    results.push({ registryUrl: REGISTRAR_URL, packages });
+    results.push({ registryUrl: PROFILE_REGISTRY_URL, profiles });
     searchedRegistries.add(normalizedPublicUrl);
   } catch (err) {
     results.push({
-      registryUrl: REGISTRAR_URL,
-      packages: [],
+      registryUrl: PROFILE_REGISTRY_URL,
+      profiles: [],
       error: err instanceof Error ? err.message : String(err),
     });
     searchedRegistries.add(normalizedPublicUrl);
@@ -101,16 +105,16 @@ const searchAllRegistries = async (args: {
         // Get auth token for this registry
         const authToken = await getRegistryAuthToken({ registryAuth });
 
-        const packages = await registrarApi.searchPackagesOnRegistry({
+        const profiles = await profileRegistryApi.searchProfilesOnRegistry({
           query,
           registryUrl: registryAuth.registryUrl,
           authToken,
         });
-        results.push({ registryUrl: registryAuth.registryUrl, packages });
+        results.push({ registryUrl: registryAuth.registryUrl, profiles });
       } catch (err) {
         results.push({
           registryUrl: registryAuth.registryUrl,
-          packages: [],
+          profiles: [],
           error: err instanceof Error ? err.message : String(err),
         });
       }
@@ -143,14 +147,14 @@ const formatSearchResults = (args: {
     }
 
     // Skip registries with no results
-    if (result.packages.length === 0) {
+    if (result.profiles.length === 0) {
       continue;
     }
 
     lines.push(result.registryUrl);
-    for (const pkg of result.packages) {
-      const description = pkg.description ? `: ${pkg.description}` : "";
-      lines.push(`  -> ${pkg.name}${description}`);
+    for (const profile of result.profiles) {
+      const description = profile.description ? `: ${profile.description}` : "";
+      lines.push(`  -> ${profile.name}${description}`);
     }
     lines.push("");
   }
@@ -175,7 +179,7 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
     return {
       decision: "block",
       reason: formatSuccess({
-        message: `Search for profile packages across all configured registries.\n\nUsage: /nori-registry-search <query>\n\nExamples:\n  /nori-registry-search typescript\n  /nori-registry-search react developer`,
+        message: `Search for profiles across all configured registries.\n\nUsage: /nori-registry-search <query>\n\nExamples:\n  /nori-registry-search typescript\n  /nori-registry-search react developer`,
       }),
     };
   }
@@ -198,10 +202,10 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
   try {
     const results = await searchAllRegistries({ query, installDir });
 
-    // Check if we have any packages
-    const hasPackages = results.some((r) => r.packages.length > 0);
+    // Check if we have any profiles
+    const hasProfiles = results.some((r) => r.profiles.length > 0);
 
-    if (!hasPackages) {
+    if (!hasProfiles) {
       // Check if all results are errors
       const allErrors = results.every((r) => r.error != null);
       if (allErrors) {
@@ -227,7 +231,7 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
     return {
       decision: "block",
       reason: formatSuccess({
-        message: `Search results for "${query}":\n\n${formattedResults}\n\nTo install a profile, use: /nori-registry-download <package-name>`,
+        message: `Search results for "${query}":\n\n${formattedResults}\n\nTo install a profile, use: /nori-registry-download <profile-name>`,
       }),
     };
   } catch (err) {

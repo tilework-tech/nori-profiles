@@ -1,5 +1,5 @@
 /**
- * CLI command for uploading profile packages to the Nori registrar
+ * CLI command for uploading profiles to the Nori profile registry
  * Handles: nori-ai registry-upload <profile>[@version] [--registry <url>]
  */
 
@@ -8,7 +8,7 @@ import * as path from "path";
 
 import * as tar from "tar";
 
-import { registrarApi } from "@/api/registrar.js";
+import { profileRegistryApi } from "@/api/profileRegistry.js";
 import { getRegistryAuthToken } from "@/api/registryAuth.js";
 import { loadConfig, getRegistryAuth } from "@/installer/config.js";
 import { error, success, info } from "@/installer/logger.js";
@@ -254,8 +254,8 @@ export const registryUploadMain = async (args: {
     const archiveData = new ArrayBuffer(tarballBuffer.byteLength);
     new Uint8Array(archiveData).set(tarballBuffer);
 
-    const result = await registrarApi.uploadProfile({
-      packageName: profileName,
+    const result = await profileRegistryApi.uploadProfile({
+      profileName,
       version: uploadVersion,
       archiveData,
       authToken,
@@ -290,7 +290,7 @@ export const registerRegistryUploadCommand = (args: {
 
   program
     .command("registry-upload <profile>")
-    .description("Upload a profile package to the Nori registrar")
+    .description("Upload a profile to the Nori profile registry")
     .option(
       "--registry <url>",
       "Upload to a specific registry URL instead of the default",

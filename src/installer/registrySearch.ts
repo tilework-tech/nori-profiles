@@ -1,10 +1,14 @@
 /**
- * CLI command for searching profile packages in the Nori registrar
+ * CLI command for searching profiles in the Nori profile registry
  * Handles: nori-ai registry-search <query>
  * Searches across all configured registries (public + private)
  */
 
-import { REGISTRAR_URL, registrarApi, type Package } from "@/api/registrar.js";
+import {
+  PROFILE_REGISTRY_URL,
+  profileRegistryApi,
+  type Profile,
+} from "@/api/profileRegistry.js";
 import { getRegistryAuthToken } from "@/api/registryAuth.js";
 import { loadConfig } from "@/installer/config.js";
 import { error, info } from "@/installer/logger.js";
@@ -17,7 +21,7 @@ import type { Command } from "commander";
  */
 type RegistrySearchResult = {
   registryUrl: string;
-  packages: Array<Package>;
+  profiles: Array<Profile>;
   error?: string | null;
 };
 
@@ -40,23 +44,23 @@ const searchAllRegistries = async (args: {
   const config = await loadConfig({ installDir });
 
   // Normalize public registry URL for comparison
-  const normalizedPublicUrl = normalizeUrl({ baseUrl: REGISTRAR_URL });
+  const normalizedPublicUrl = normalizeUrl({ baseUrl: PROFILE_REGISTRY_URL });
 
   // Track searched registries to avoid duplicates
   const searchedRegistries = new Set<string>();
 
   // Always search public registry (no auth required)
   try {
-    const packages = await registrarApi.searchPackagesOnRegistry({
+    const profiles = await profileRegistryApi.searchProfilesOnRegistry({
       query,
-      registryUrl: REGISTRAR_URL,
+      registryUrl: PROFILE_REGISTRY_URL,
     });
-    results.push({ registryUrl: REGISTRAR_URL, packages });
+    results.push({ registryUrl: PROFILE_REGISTRY_URL, profiles });
     searchedRegistries.add(normalizedPublicUrl);
   } catch (err) {
     results.push({
-      registryUrl: REGISTRAR_URL,
-      packages: [],
+      registryUrl: PROFILE_REGISTRY_URL,
+      profiles: [],
       error: err instanceof Error ? err.message : String(err),
     });
     searchedRegistries.add(normalizedPublicUrl);
@@ -79,16 +83,16 @@ const searchAllRegistries = async (args: {
         // Get auth token for this registry
         const authToken = await getRegistryAuthToken({ registryAuth });
 
-        const packages = await registrarApi.searchPackagesOnRegistry({
+        const profiles = await profileRegistryApi.searchProfilesOnRegistry({
           query,
           registryUrl: registryAuth.registryUrl,
           authToken,
         });
-        results.push({ registryUrl: registryAuth.registryUrl, packages });
+        results.push({ registryUrl: registryAuth.registryUrl, profiles });
       } catch (err) {
         results.push({
           registryUrl: registryAuth.registryUrl,
-          packages: [],
+          profiles: [],
           error: err instanceof Error ? err.message : String(err),
         });
       }
@@ -121,14 +125,14 @@ const formatSearchResults = (args: {
     }
 
     // Skip registries with no results
-    if (result.packages.length === 0) {
+    if (result.profiles.length === 0) {
       continue;
     }
 
     lines.push(result.registryUrl);
-    for (const pkg of result.packages) {
-      const description = pkg.description ? `: ${pkg.description}` : "";
-      lines.push(`  -> ${pkg.name}${description}`);
+    for (const profile of result.profiles) {
+      const description = profile.description ? `: ${profile.description}` : "";
+      lines.push(`  -> ${profile.name}${description}`);
     }
     lines.push("");
   }
@@ -137,7 +141,7 @@ const formatSearchResults = (args: {
 };
 
 /**
- * Search for profiles in the registrar across all configured registries
+ * Search for profiles in the registry across all configured registries
  * @param args - The search parameters
  * @param args.query - The search query
  * @param args.installDir - Optional installation directory (detected if not provided)
@@ -157,10 +161,10 @@ export const registrySearchMain = async (args: {
     installDir: effectiveInstallDir,
   });
 
-  // Check if we have any packages
-  const hasPackages = results.some((r) => r.packages.length > 0);
+  // Check if we have any profiles
+  const hasProfiles = results.some((r) => r.profiles.length > 0);
 
-  if (!hasPackages) {
+  if (!hasProfiles) {
     // Check if all results are errors
     const allErrors = results.every((r) => r.error != null);
     if (allErrors) {
@@ -174,7 +178,7 @@ export const registrySearchMain = async (args: {
     info({ message: `No profiles found matching "${query}".` });
     info({
       message:
-        "Try a different search term or browse the registrar at https://registrar.tilework.tech",
+        "Try a different search term or browse the registry at https://registrar.tilework.tech",
     });
     return;
   }
@@ -186,7 +190,7 @@ export const registrySearchMain = async (args: {
   console.log("");
   info({
     message:
-      "To install a profile, run: nori-ai registry-download <package-name>",
+      "To install a profile, run: nori-ai registry-download <profile-name>",
   });
 };
 
@@ -202,7 +206,7 @@ export const registerRegistrySearchCommand = (args: {
 
   program
     .command("registry-search <query>")
-    .description("Search for profile packages in the Nori registrar")
+    .description("Search for profiles in the Nori profile registry")
     .action(async (query: string) => {
       // Get global options from parent
       const globalOpts = program.opts();

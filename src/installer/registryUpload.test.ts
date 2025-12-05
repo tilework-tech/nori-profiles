@@ -9,9 +9,9 @@ import * as path from "path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 // Mock the registrar API
-vi.mock("@/api/registrar.js", () => ({
-  REGISTRAR_URL: "https://registrar.tilework.tech",
-  registrarApi: {
+vi.mock("@/api/profileRegistry.js", () => ({
+  PROFILE_REGISTRY_URL: "https://registrar.tilework.tech",
+  profileRegistryApi: {
     uploadProfile: vi.fn(),
   },
 }));
@@ -35,11 +35,11 @@ const mockConsoleError = vi
   .spyOn(console, "error")
   .mockImplementation(() => undefined);
 
-import { registrarApi } from "@/api/registrar.js";
 import { getRegistryAuthToken } from "@/api/registryAuth.js";
 import { loadConfig, getRegistryAuth } from "@/installer/config.js";
 
 import { registryUploadMain } from "./registryUpload.js";
+import { profileRegistryApi } from "@/api/profileRegistry.js";
 
 describe("registry-upload", () => {
   let testDir: string;
@@ -105,7 +105,7 @@ describe("registry-upload", () => {
 
       vi.mocked(getRegistryAuthToken).mockResolvedValue("mock-auth-token");
 
-      vi.mocked(registrarApi.uploadProfile).mockResolvedValue({
+      vi.mocked(profileRegistryApi.uploadProfile).mockResolvedValue({
         name: "test-profile",
         version: "1.0.0",
         tarballSha: "sha512-abc123",
@@ -118,9 +118,9 @@ describe("registry-upload", () => {
       });
 
       // Verify API was called with correct registry
-      expect(registrarApi.uploadProfile).toHaveBeenCalledWith(
+      expect(profileRegistryApi.uploadProfile).toHaveBeenCalledWith(
         expect.objectContaining({
-          packageName: "test-profile",
+          profileName: "test-profile",
           version: "1.0.0",
           authToken: "mock-auth-token",
           registryUrl: "https://registrar.tilework.tech",
@@ -156,7 +156,7 @@ describe("registry-upload", () => {
 
       vi.mocked(getRegistryAuthToken).mockResolvedValue("mock-auth-token");
 
-      vi.mocked(registrarApi.uploadProfile).mockResolvedValue({
+      vi.mocked(profileRegistryApi.uploadProfile).mockResolvedValue({
         name: "test-profile",
         version: "2.0.0",
         tarballSha: "sha512-abc123",
@@ -169,9 +169,9 @@ describe("registry-upload", () => {
       });
 
       // Verify API was called with correct version
-      expect(registrarApi.uploadProfile).toHaveBeenCalledWith(
+      expect(profileRegistryApi.uploadProfile).toHaveBeenCalledWith(
         expect.objectContaining({
-          packageName: "test-profile",
+          profileName: "test-profile",
           version: "2.0.0",
         }),
       );
@@ -266,7 +266,7 @@ describe("registry-upload", () => {
 
       vi.mocked(getRegistryAuthToken).mockResolvedValue("mock-auth-token");
 
-      vi.mocked(registrarApi.uploadProfile).mockRejectedValue(
+      vi.mocked(profileRegistryApi.uploadProfile).mockRejectedValue(
         new Error("Version already exists"),
       );
 
@@ -319,7 +319,7 @@ describe("registry-upload", () => {
       expect(allErrorOutput).toContain("--registry");
 
       // Verify no upload occurred
-      expect(registrarApi.uploadProfile).not.toHaveBeenCalled();
+      expect(profileRegistryApi.uploadProfile).not.toHaveBeenCalled();
     });
 
     it("should upload to specified registry when --registry provided", async () => {
@@ -351,7 +351,7 @@ describe("registry-upload", () => {
 
       vi.mocked(getRegistryAuthToken).mockResolvedValue("mock-private-token");
 
-      vi.mocked(registrarApi.uploadProfile).mockResolvedValue({
+      vi.mocked(profileRegistryApi.uploadProfile).mockResolvedValue({
         name: "test-profile",
         version: "1.0.0",
         tarballSha: "sha512-abc123",
@@ -365,9 +365,9 @@ describe("registry-upload", () => {
       });
 
       // Verify API was called with specified registry
-      expect(registrarApi.uploadProfile).toHaveBeenCalledWith(
+      expect(profileRegistryApi.uploadProfile).toHaveBeenCalledWith(
         expect.objectContaining({
-          packageName: "test-profile",
+          profileName: "test-profile",
           registryUrl: privateRegistryUrl,
           authToken: "mock-private-token",
         }),
@@ -404,7 +404,7 @@ describe("registry-upload", () => {
       expect(allErrorOutput).toContain("https://unknown-registry.example.com");
 
       // Verify no upload occurred
-      expect(registrarApi.uploadProfile).not.toHaveBeenCalled();
+      expect(profileRegistryApi.uploadProfile).not.toHaveBeenCalled();
     });
 
     it("should upload with version and --registry", async () => {
@@ -436,7 +436,7 @@ describe("registry-upload", () => {
 
       vi.mocked(getRegistryAuthToken).mockResolvedValue("mock-private-token");
 
-      vi.mocked(registrarApi.uploadProfile).mockResolvedValue({
+      vi.mocked(profileRegistryApi.uploadProfile).mockResolvedValue({
         name: "test-profile",
         version: "2.0.0",
         tarballSha: "sha512-abc123",
@@ -450,9 +450,9 @@ describe("registry-upload", () => {
       });
 
       // Verify API was called with correct version and registry
-      expect(registrarApi.uploadProfile).toHaveBeenCalledWith(
+      expect(profileRegistryApi.uploadProfile).toHaveBeenCalledWith(
         expect.objectContaining({
-          packageName: "test-profile",
+          profileName: "test-profile",
           version: "2.0.0",
           registryUrl: privateRegistryUrl,
         }),
