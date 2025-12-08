@@ -74,16 +74,6 @@ describe("AgentRegistry", () => {
     });
   });
 
-  describe("getDefaultAgent", () => {
-    it("should return claude-code as the default agent", () => {
-      const registry = AgentRegistry.getInstance();
-      const defaultAgent = registry.getDefaultAgent();
-
-      expect(defaultAgent).toBeDefined();
-      expect(defaultAgent.name).toBe("claude-code");
-    });
-  });
-
   describe("singleton behavior", () => {
     it("should return the same instance", () => {
       const registry1 = AgentRegistry.getInstance();

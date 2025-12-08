@@ -30,11 +30,9 @@ export type AgentConfig = {
 export class AgentRegistry {
   private static instance: AgentRegistry | null = null;
   private agents: Map<string, AgentConfig>;
-  private defaultAgentName: string;
 
   private constructor() {
     this.agents = new Map();
-    this.defaultAgentName = "claude-code";
 
     // Register Claude Code agent
     this.agents.set("claude-code", {
@@ -48,6 +46,7 @@ export class AgentRegistry {
 
   /**
    * Get the singleton instance
+   *
    * @returns The AgentRegistry singleton instance
    */
   public static getInstance(): AgentRegistry {
@@ -82,25 +81,10 @@ export class AgentRegistry {
 
   /**
    * Get all registered agents
+   *
    * @returns Array of all agent configurations
    */
   public getAllAgents(): Array<AgentConfig> {
     return Array.from(this.agents.values());
-  }
-
-  /**
-   * Get the default agent
-   * @returns The default agent configuration
-   */
-  public getDefaultAgent(): AgentConfig {
-    return this.getAgent({ name: this.defaultAgentName });
-  }
-
-  /**
-   * Get the default agent name
-   * @returns The default agent name
-   */
-  public getDefaultAgentName(): string {
-    return this.defaultAgentName;
   }
 }

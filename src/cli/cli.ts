@@ -23,7 +23,6 @@ import { normalizeInstallDir } from "@/utils/path.js";
 const program = new Command();
 const version = getCurrentPackageVersion() || "unknown";
 const agentRegistry = AgentRegistry.getInstance();
-const defaultAgentName = agentRegistry.getDefaultAgentName();
 
 /**
  * Validate agent name and return it if valid
@@ -55,9 +54,9 @@ program
   .option("-n, --non-interactive", "Run without interactive prompts")
   .option(
     "-a, --agent <name>",
-    `Target coding agent (default: ${defaultAgentName})`,
+    "Target coding agent (default: claude-code)",
     validateAgent,
-    defaultAgentName,
+    "claude-code",
   )
   .addHelpText(
     "after",
