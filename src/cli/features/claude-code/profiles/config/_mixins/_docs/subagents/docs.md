@@ -8,7 +8,7 @@ This directory contains subagent definitions for documentation workflows, specif
 
 ### How it fits into the larger codebase
 
-These subagent .md files are copied to ~/.claude/agents/ during profile installation by @/src/cli/features/claude-code/subagents/. The main agent invokes these subagents using the Task tool with a subagent_type parameter. The /nori-init-docs slash command (defined in @/src/cli/features/claude-code/profiles/config/_mixins/_docs/slashcommands/) invokes nori-initial-documenter, while /update-noridocs invokes nori-change-documenter. Both subagents integrate with the nori-sync-docs skill (from @/src/cli/features/claude-code/skills/config/paid/meta/nori-sync-docs/) to push documentation to remote servers. These subagents are referenced in profile CLAUDE.md files (like @/src/cli/features/claude-code/profiles/config/amol/CLAUDE.md) as part of the documentation workflow.
+These subagent .md files are copied to ~/.claude/agents/ during profile installation by @/src/cli/features/claude-code/subagents/. The main agent invokes these subagents using the Task tool with a subagent_type parameter. The /nori-init-docs slash command (defined in @/src/cli/features/claude-code/profiles/config/_mixins/_docs/slashcommands/) invokes nori-initial-documenter, while /update-noridocs invokes nori-change-documenter. Both subagents integrate with the nori-sync-docs skill (from @/src/cli/features/claude-code/profiles/config/_mixins/_docs-paid/skills/nori-sync-docs/) to push documentation to remote servers. These subagents are referenced in profile CLAUDE.md files (like @/src/cli/features/claude-code/profiles/config/amol/CLAUDE.md) as part of the documentation workflow.
 
 ### Core Implementation
 
