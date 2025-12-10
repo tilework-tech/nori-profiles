@@ -123,13 +123,13 @@ describe("cursorProfilesLoader", () => {
         .catch(() => false);
       expect(seniorSweExists).toBe(true);
 
-      // Verify it has CLAUDE.md and profile.json
-      const claudeMdPath = path.join(seniorSwePath, "CLAUDE.md");
-      const claudeMdExists = await fs
-        .access(claudeMdPath)
+      // Verify it has AGENTS.md and profile.json
+      const agentsMdPath = path.join(seniorSwePath, "AGENTS.md");
+      const agentsMdExists = await fs
+        .access(agentsMdPath)
         .then(() => true)
         .catch(() => false);
-      expect(claudeMdExists).toBe(true);
+      expect(agentsMdExists).toBe(true);
 
       const profileJsonPath = path.join(seniorSwePath, "profile.json");
       const profileJsonExists = await fs

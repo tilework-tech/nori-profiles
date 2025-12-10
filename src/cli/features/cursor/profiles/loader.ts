@@ -26,8 +26,8 @@ import type {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Profile templates config directory (reuse Claude's profile templates)
-const PROFILE_TEMPLATES_DIR = path.join(__dirname, "../../profiles/config");
+// Profile templates config directory (Cursor-specific profiles with AGENTS.md)
+const PROFILE_TEMPLATES_DIR = path.join(__dirname, "config");
 
 // Mixins directory (contains reusable profile components)
 const MIXINS_DIR = path.join(PROFILE_TEMPLATES_DIR, "_mixins");
@@ -143,8 +143,8 @@ const installProfiles = async (args: { config: Config }): Promise<void> => {
     const profileDestDir = path.join(cursorProfilesDir, entry.name);
 
     try {
-      const claudeMdPath = path.join(profileSrcDir, "CLAUDE.md");
-      await fs.access(claudeMdPath);
+      const agentsMdPath = path.join(profileSrcDir, "AGENTS.md");
+      await fs.access(agentsMdPath);
 
       await fs.rm(profileDestDir, { recursive: true, force: true });
 
@@ -463,11 +463,11 @@ const validate = async (args: {
 
   for (const profile of requiredProfiles) {
     const profileDir = path.join(cursorProfilesDir, profile);
-    const claudeMdPath = path.join(profileDir, "CLAUDE.md");
+    const agentsMdPath = path.join(profileDir, "AGENTS.md");
     const profileJsonPath = path.join(profileDir, "profile.json");
 
     try {
-      await fs.access(claudeMdPath);
+      await fs.access(agentsMdPath);
       await fs.access(profileJsonPath);
     } catch {
       missingProfiles.push(profile);
