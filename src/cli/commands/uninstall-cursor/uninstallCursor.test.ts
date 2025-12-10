@@ -22,6 +22,8 @@ vi.mock("@/cli/env.js", () => ({
   getCursorDir: () => mockCursorDir,
   getCursorSettingsFile: () => path.join(mockCursorDir, "settings.json"),
   getCursorProfilesDir: () => path.join(mockCursorDir, "profiles"),
+  getCursorHooksFile: () => path.join(mockCursorDir, "hooks.json"),
+  getCursorCommandsDir: () => path.join(mockCursorDir, "commands"),
   MCP_ROOT: "/mock/mcp/root",
 }));
 
