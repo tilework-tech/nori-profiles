@@ -15,6 +15,7 @@ cli.ts
   |
   +-- registerInstallCommand({ program })        --> commands/install/install.ts
   +-- registerInstallCursorCommand({ program })  --> commands/install-cursor/installCursor.ts
+  +-- registerUninstallCursorCommand({ program })--> commands/uninstall-cursor/uninstallCursor.ts
   +-- registerUninstallCommand({ program })      --> commands/uninstall/uninstall.ts
   +-- registerCheckCommand({ program })          --> commands/check/check.ts
   +-- registerSwitchProfileCommand({ program })  --> commands/switch-profile/profiles.ts
@@ -66,6 +67,8 @@ The `install/` directory contains command-specific utilities:
 The `install-location/` command was extracted from inline definition in cli.ts to follow the same pattern as other commands.
 
 The `install-cursor/` command installs Nori profiles to Cursor IDE (`~/.cursor/profiles/`). It uses CursorLoaderRegistry instead of LoaderRegistry and executes Cursor-specific loaders that write to Cursor paths. The command always installs to the user's home directory (os.homedir()) and does not support the `--install-dir` option.
+
+The `uninstall-cursor/` command removes Nori profiles from Cursor IDE. It uses `CursorLoaderRegistry.getAllReversed()` to get loaders in reverse order (mirroring the standard uninstall pattern) and calls each loader's `uninstall()` method. Like `install-cursor`, it always operates on the user's home directory and does not support custom install directories.
 
 Tests within each command directory use the same temp directory isolation pattern as other tests in the codebase, passing `installDir` explicitly to functions rather than mocking `process.env.HOME`.
 
