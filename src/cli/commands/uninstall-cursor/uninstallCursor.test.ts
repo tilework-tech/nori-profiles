@@ -1,6 +1,6 @@
 /**
- * Tests for install-cursor CLI command
- * Verifies that install-cursor executes all cursor loaders
+ * Tests for uninstall-cursor CLI command
+ * Verifies that uninstall-cursor executes all cursor loaders in reverse order
  */
 
 import * as fs from "fs/promises";
@@ -37,16 +37,20 @@ vi.mock("@/cli/env.js", () => ({
   MCP_ROOT: "/mock/mcp/root",
 }));
 
-import { installCursorMain } from "./installCursor.js";
+import { installCursorMain } from "@/cli/commands/install-cursor/installCursor.js";
 
-describe("install-cursor command", () => {
+import { uninstallCursorMain } from "./uninstallCursor.js";
+
+describe("uninstall-cursor command", () => {
   let tempDir: string;
   let cursorDir: string;
   let profilesDir: string;
 
   beforeEach(async () => {
     // Create temp directory for testing
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "install-cursor-test-"));
+    tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "uninstall-cursor-test-"),
+    );
     cursorDir = path.join(tempDir, ".cursor");
     profilesDir = path.join(cursorDir, "profiles");
 
@@ -65,41 +69,48 @@ describe("install-cursor command", () => {
     vi.clearAllMocks();
   });
 
-  it("should execute cursor loaders and install profiles", async () => {
+  it("should execute cursor loaders and uninstall profiles", async () => {
+    // First install
     await installCursorMain();
 
-    // Verify profiles directory was created
-    const profilesDirExists = await fs
+    // Verify profiles were installed
+    const filesBeforeUninstall = await fs.readdir(profilesDir);
+    expect(filesBeforeUninstall.length).toBeGreaterThan(0);
+    expect(filesBeforeUninstall).toContain("senior-swe");
+
+    // Then uninstall
+    await uninstallCursorMain();
+
+    // Verify built-in profiles are removed
+    const dirExists = await fs
       .access(profilesDir)
       .then(() => true)
       .catch(() => false);
 
-    expect(profilesDirExists).toBe(true);
+    if (dirExists) {
+      const filesAfterUninstall = await fs.readdir(profilesDir);
+      // Should have no built-in profiles left
+      expect(filesAfterUninstall).not.toContain("senior-swe");
+      expect(filesAfterUninstall).not.toContain("amol");
+    }
   });
 
-  it("should install profile templates to cursor profiles directory", async () => {
+  it("should remove permissions from settings.json", async () => {
+    // First install
     await installCursorMain();
 
-    // Verify profile directories were copied
-    const files = await fs.readdir(profilesDir);
-    expect(files.length).toBeGreaterThan(0);
-    expect(files).toContain("senior-swe");
-  });
-
-  it("should create settings.json with permissions", async () => {
-    await installCursorMain();
-
-    // Verify settings.json exists
+    // Verify permissions exist
     const settingsPath = path.join(cursorDir, "settings.json");
-    const settingsExists = await fs
-      .access(settingsPath)
-      .then(() => true)
-      .catch(() => false);
-
-    expect(settingsExists).toBe(true);
-
-    // Verify permissions are configured
-    const settings = JSON.parse(await fs.readFile(settingsPath, "utf-8"));
+    let settings = JSON.parse(await fs.readFile(settingsPath, "utf-8"));
     expect(settings.permissions?.additionalDirectories).toContain(profilesDir);
+
+    // Then uninstall
+    await uninstallCursorMain();
+
+    // Verify permissions are removed
+    settings = JSON.parse(await fs.readFile(settingsPath, "utf-8"));
+    expect(settings.permissions?.additionalDirectories || []).not.toContain(
+      profilesDir,
+    );
   });
 });

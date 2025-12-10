@@ -151,6 +151,17 @@ export const getCursorProfilesDir = (args: { installDir: string }): string => {
 };
 
 /**
+ * Get the Cursor commands directory path
+ * @param args - Configuration arguments
+ * @param args.installDir - Installation directory
+ *
+ * @returns Absolute path to the commands directory
+ */
+export const getCursorCommandsDir = (args: { installDir: string }): string => {
+  return path.join(getCursorDir(args), "commands");
+};
+
+/**
  * Get the Cursor home directory path (always ~/.cursor)
  * This is where Cursor stores user-level configuration.
  *
@@ -189,4 +200,24 @@ export const getCursorSkillsDir = (args: { installDir: string }): string => {
  */
 export const getCursorAgentsMdFile = (args: { installDir: string }): string => {
   return path.join(getCursorDir(args), "AGENTS.md");
+};
+
+/**
+ * Get the Cursor hooks file path
+ * @param args - Configuration arguments
+ * @param args.installDir - Installation directory
+ *
+ * @returns Absolute path to hooks.json
+ */
+export const getCursorHooksFile = (args: { installDir: string }): string => {
+  return path.join(getCursorDir(args), "hooks.json");
+};
+
+/**
+ * Get the Cursor home hooks file path (always ~/.cursor/hooks.json)
+ *
+ * @returns Absolute path to ~/.cursor/hooks.json
+ */
+export const getCursorHomeHooksFile = (): string => {
+  return path.join(getCursorHomeDir(), "hooks.json");
 };

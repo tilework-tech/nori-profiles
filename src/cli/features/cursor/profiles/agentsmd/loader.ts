@@ -248,7 +248,8 @@ const insertAgentsMd = async (args: { config: Config }): Promise<void> => {
   info({ message: "Configuring AGENTS.md with coding task instructions..." });
 
   // Get profile name from config (default to senior-swe)
-  const profileName = config.profile?.baseProfile || "senior-swe";
+  // Use cursorProfile for Cursor, not profile (which is for Claude Code)
+  const profileName = config.cursorProfile?.baseProfile || "senior-swe";
 
   // Get paths using installDir
   const cursorDir = getCursorDir({ installDir: config.installDir });
