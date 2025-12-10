@@ -5,7 +5,7 @@
  *
  * This script is called by Claude Code hooks on SessionEnd event.
  * It outputs a synchronous message to inform the user that statistics
- * are being calculated (while the async statistics hook runs in background).
+ * are being calculated (before statistics.ts processes the transcript).
  */
 
 import { getInstallDirs } from "@/utils/path.js";

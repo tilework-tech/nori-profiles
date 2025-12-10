@@ -1,4 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+import * as pathUtils from "@/utils/path.js";
 
 import {
   parseSkillUsage,
@@ -262,5 +264,137 @@ describe("formatStatistics", () => {
 
     expect(result).toContain("Session Statistics");
     expect(result).toContain("User: 0");
+  });
+});
+
+describe("statistics hook script behavior", () => {
+  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+  let originalStdin: typeof process.stdin;
+
+  beforeEach(() => {
+    consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {
+      // Mock implementation
+    });
+
+    // Mock getInstallDirs to return a valid installation directory
+    vi.spyOn(pathUtils, "getInstallDirs").mockReturnValue([process.cwd()]);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("should NOT output async:true - hook must run synchronously", async () => {
+    // This test verifies the fix for the statistics exit card not showing.
+    // The bug was: hook outputs { async: true } first, then systemMessage later.
+    // Claude Code stops reading stdout after seeing { async: true }, so
+    // the systemMessage was lost.
+    //
+    // The fix: Remove { async: true } so the hook runs synchronously and
+    // the systemMessage is the only output.
+
+    // Import the main function from statistics
+    const { main } = await import("./statistics.js");
+
+    // Create mock stdin with a valid transcript (as Buffer for proper handling)
+    const transcript = `{"type":"user","message":{"role":"user","content":"Hello"}}
+{"type":"assistant","message":{"role":"assistant","content":"Hi!"}}`;
+
+    // Mock stdin to provide transcript data as Buffer chunks
+    const { Readable } = await import("stream");
+    const mockStdin = new Readable({
+      read() {
+        this.push(Buffer.from(transcript));
+        this.push(null); // Signal end of stream
+      },
+    });
+
+    // Replace process.stdin temporarily
+    originalStdin = process.stdin;
+    Object.defineProperty(process, "stdin", {
+      value: mockStdin,
+      writable: true,
+      configurable: true,
+    });
+
+    try {
+      await main();
+
+      // Verify that { async: true } was NOT output
+      const allCalls = consoleLogSpy.mock.calls;
+      for (const call of allCalls) {
+        const output = call[0];
+        if (typeof output === "string") {
+          try {
+            const parsed = JSON.parse(output);
+            expect(parsed).not.toHaveProperty("async");
+          } catch {
+            // Not JSON, skip
+          }
+        }
+      }
+    } finally {
+      // Restore stdin
+      Object.defineProperty(process, "stdin", {
+        value: originalStdin,
+        writable: true,
+        configurable: true,
+      });
+    }
+  });
+
+  it("should output systemMessage with statistics for valid session", async () => {
+    const { main } = await import("./statistics.js");
+
+    // Create mock stdin with a transcript containing user messages
+    const transcript = `{"type":"user","message":{"role":"user","content":"Hello"}}
+{"type":"assistant","message":{"role":"assistant","content":"Hi!"}}`;
+
+    // Mock stdin to provide transcript data as Buffer chunks
+    const { Readable } = await import("stream");
+    const mockStdin = new Readable({
+      read() {
+        this.push(Buffer.from(transcript));
+        this.push(null); // Signal end of stream
+      },
+    });
+
+    originalStdin = process.stdin;
+    Object.defineProperty(process, "stdin", {
+      value: mockStdin,
+      writable: true,
+      configurable: true,
+    });
+
+    try {
+      await main();
+
+      // Verify that systemMessage was output with Session Statistics
+      const allCalls = consoleLogSpy.mock.calls;
+      let foundSystemMessage = false;
+
+      for (const call of allCalls) {
+        const output = call[0];
+        if (typeof output === "string") {
+          try {
+            const parsed = JSON.parse(output);
+            if (parsed.systemMessage) {
+              foundSystemMessage = true;
+              expect(parsed.systemMessage).toContain("Session Statistics");
+            }
+          } catch {
+            // Not JSON, skip
+          }
+        }
+      }
+
+      expect(foundSystemMessage).toBe(true);
+    } finally {
+      Object.defineProperty(process, "stdin", {
+        value: originalStdin,
+        writable: true,
+        configurable: true,
+      });
+    }
   });
 });

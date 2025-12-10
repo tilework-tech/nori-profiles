@@ -283,7 +283,7 @@ const statisticsNotificationHook: HookInterface = {
 };
 
 /**
- * Statistics hook - calculates and displays session statistics (async)
+ * Statistics hook - calculates and displays session statistics
  */
 const statisticsHook: HookInterface = {
   name: "statistics",

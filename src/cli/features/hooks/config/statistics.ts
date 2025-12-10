@@ -355,7 +355,7 @@ const readTranscript = async (args: {
 /**
  * Main entry point
  */
-const main = async (): Promise<void> => {
+export const main = async (): Promise<void> => {
   debug({ message: "=== Statistics hook execution started ===" });
 
   // Find installation directory
@@ -431,10 +431,11 @@ const main = async (): Promise<void> => {
 };
 
 // Run if executed directly
+// Note: This hook runs synchronously (no { async: true }) so that the
+// systemMessage output is seen by Claude Code before it processes the result.
+// Unlike summarize.ts which makes API calls and needs async, statistics
+// calculation is purely local and fast.
 if (import.meta.url === `file://${process.argv[1]}`) {
-  // Mark this hook as async so it runs in background
-  console.log(JSON.stringify({ async: true }));
-
   main().catch((err) => {
     error({ message: "Statistics hook: Unhandled error (non-fatal):" });
     error({ message: `Error: ${err?.message || err}` });
