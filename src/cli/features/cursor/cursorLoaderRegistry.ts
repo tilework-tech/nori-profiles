@@ -3,6 +3,7 @@
  * Singleton registry that manages all Cursor feature loaders
  */
 
+import { cursorHooksLoader } from "@/cli/features/cursor/hooks/loader.js";
 import { cursorProfilesLoader } from "@/cli/features/cursor/profiles/loader.js";
 import { cursorSlashCommandsLoader } from "@/cli/features/cursor/slashcommands/loader.js";
 
@@ -19,8 +20,10 @@ export class CursorLoaderRegistry {
     this.loaders = new Map();
 
     // Register all Cursor loaders
+    // Order: profiles first, then slash commands, then hooks
     this.loaders.set(cursorProfilesLoader.name, cursorProfilesLoader);
     this.loaders.set(cursorSlashCommandsLoader.name, cursorSlashCommandsLoader);
+    this.loaders.set(cursorHooksLoader.name, cursorHooksLoader);
   }
 
   /**
