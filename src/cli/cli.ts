@@ -14,6 +14,7 @@ import { registerInstallCursorCommand } from "@/cli/commands/install-cursor/inst
 import { registerInstallLocationCommand } from "@/cli/commands/install-location/installLocation.js";
 import { registerRegistryDownloadCommand } from "@/cli/commands/registry-download/registryDownload.js";
 import { registerRegistrySearchCommand } from "@/cli/commands/registry-search/registrySearch.js";
+import { registerRegistryUpdateCommand } from "@/cli/commands/registry-update/registryUpdate.js";
 import { registerRegistryUploadCommand } from "@/cli/commands/registry-upload/registryUpload.js";
 import { registerSwitchProfileCommand } from "@/cli/commands/switch-profile/profiles.js";
 import { registerUninstallCommand } from "@/cli/commands/uninstall/uninstall.js";
@@ -45,6 +46,8 @@ Examples:
   $ nori-ai registry-search typescript
   $ nori-ai registry-download my-profile
   $ nori-ai registry-download my-profile@1.0.0
+  $ nori-ai registry-download my-profile --list-versions
+  $ nori-ai registry-update my-profile
   $ nori-ai registry-upload my-profile
   $ nori-ai registry-upload my-profile@1.0.0 --registry https://registry.example.com
   $ nori-ai --non-interactive install
@@ -60,6 +63,7 @@ registerSwitchProfileCommand({ program });
 registerInstallLocationCommand({ program });
 registerRegistrySearchCommand({ program });
 registerRegistryDownloadCommand({ program });
+registerRegistryUpdateCommand({ program });
 registerRegistryUploadCommand({ program });
 
 program.parse(process.argv);
