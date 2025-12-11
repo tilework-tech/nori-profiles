@@ -4,6 +4,7 @@
  */
 
 import { configLoader } from "@/cli/features/config/loader.js";
+import { hooksLoader } from "@/cli/features/cursor-agent/hooks/loader.js";
 import { profilesLoader } from "@/cli/features/cursor-agent/profiles/loader.js";
 import { cursorSlashCommandsLoader } from "@/cli/features/cursor-agent/slashcommands/loader.js";
 
@@ -23,6 +24,7 @@ export class CursorLoaderRegistry {
     // IMPORTANT: config loader must be included - it manages the shared .nori-config.json
     this.loaders.set(configLoader.name, configLoader);
     this.loaders.set(profilesLoader.name, profilesLoader);
+    this.loaders.set(hooksLoader.name, hooksLoader);
     this.loaders.set(cursorSlashCommandsLoader.name, cursorSlashCommandsLoader);
   }
 

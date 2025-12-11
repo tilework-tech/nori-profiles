@@ -59,6 +59,18 @@ export const getCursorAgentsMdFile = (args: { installDir: string }): string => {
 };
 
 /**
+ * Get the hooks.json file path for Cursor
+ * @param args - Configuration arguments
+ * @param args.installDir - Installation directory
+ *
+ * @returns Path to the hooks.json file
+ */
+export const getCursorHooksFile = (args: { installDir: string }): string => {
+  const { installDir } = args;
+  return path.join(getCursorDir({ installDir }), "hooks.json");
+};
+
+/**
  * Get the commands directory path for Cursor
  * @param args - Configuration arguments
  * @param args.installDir - Installation directory

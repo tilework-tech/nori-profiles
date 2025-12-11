@@ -22,6 +22,7 @@ CLI Commands (install, uninstall, check, switch-profile)
         |       |       +-- rulesLoader
         |       |       +-- agentsMdLoader
         |       |
+        |       +-- hooksLoader --> configures ~/.cursor/hooks.json
         |       +-- slashCommandsLoader
         |
         +-- listProfiles({ installDir }) --> scans ~/.cursor/profiles/
@@ -40,7 +41,7 @@ The AgentRegistry (@/src/cli/features/agentRegistry.ts) registers this agent alo
 
 ### Core Implementation
 
-**CursorLoaderRegistry** (loaderRegistry.ts): Singleton registry implementing the shared `LoaderRegistry` interface from @/src/cli/features/agentRegistry.ts. Registers the shared `configLoader` (from @/src/cli/features/config/loader.ts), `profilesLoader`, and `slashCommandsLoader`. Provides `getAll()` and `getAllReversed()` for install/uninstall ordering. The config loader must be included to manage the shared `.nori-config.json` file.
+**CursorLoaderRegistry** (loaderRegistry.ts): Singleton registry implementing the shared `LoaderRegistry` interface from @/src/cli/features/agentRegistry.ts. Registers the shared `configLoader` (from @/src/cli/features/config/loader.ts), `profilesLoader`, `hooksLoader`, and `slashCommandsLoader`. Provides `getAll()` and `getAllReversed()` for install/uninstall ordering. The config loader must be included to manage the shared `.nori-config.json` file.
 
 **profilesLoader** (profiles/loader.ts): Orchestrates profile installation with mixin composition:
 1. Reading profile.json metadata to get mixins configuration
@@ -56,6 +57,8 @@ The AgentRegistry (@/src/cli/features/agentRegistry.ts) registers this agent alo
 
 **agentsMdLoader** (profiles/agentsmd/loader.ts): Manages the `AGENTS.md` file at project root using a managed block pattern (BEGIN/END NORI-AI MANAGED BLOCK). Reads AGENTS.md content from the selected profile and inserts/updates it within the managed block, preserving any user content outside the block.
 
+**hooksLoader** (hooks/loader.ts): Configures Cursor IDE hooks for desktop notifications. Manages `~/.cursor/hooks.json` using Cursor's hooks schema (`{ version: 1, hooks: { stop: [...] } }`). Adds a notify-hook.sh script to the `stop` event, which fires when the Cursor agent loop completes. The loader handles idempotent installation (avoids duplicate hooks), clean uninstallation (removes only Nori hooks), and validation.
+
 **slashCommandsLoader** (slashcommands/loader.ts): Installs Nori slash commands to `~/.cursor/commands/`. Reads `.md` files from the `slashcommands/config/` directory, applies template substitution via @/src/cli/features/cursor-agent/template.ts, and writes them to the target directory. Uninstall removes installed commands and cleans up the commands directory if empty.
 
 ### Things to Know
@@ -68,6 +71,7 @@ The AgentRegistry (@/src/cli/features/agentRegistry.ts) registers this agent alo
 | `getCursorProfilesDir({ installDir })` | `{installDir}/.cursor/profiles` |
 | `getCursorRulesDir({ installDir })` | `{installDir}/.cursor/rules` |
 | `getCursorAgentsMdFile({ installDir })` | `{installDir}/AGENTS.md` |
+| `getCursorHooksFile({ installDir })` | `{installDir}/.cursor/hooks.json` |
 | `getCursorCommandsDir({ installDir })` | `{installDir}/.cursor/commands` |
 
 **Key differences from claude-code:**
@@ -75,7 +79,9 @@ The AgentRegistry (@/src/cli/features/agentRegistry.ts) registers this agent alo
 - Uses rules/ directory with RULE.md files instead of skills/ with SKILL.md
 - Rules use Cursor's YAML frontmatter format with `description` and `alwaysApply: false` (no globs - uses "Apply Intelligently" mode)
 - Target directory is ~/.cursor instead of ~/.claude
-- No hooks or statusline loaders (yet)
+- Cursor hooks use a simpler event model (e.g., `stop`) compared to Claude Code's hooks (e.g., `SessionEnd`)
+
+**Hooks architecture:** The hooks/ directory contains the hooksLoader and a config/ subdirectory with hook scripts. The notify-hook.sh script is a cross-platform bash script supporting Linux (notify-send), macOS (osascript/terminal-notifier), and Windows (PowerShell). Cursor's hooks.json format is `{ version: 1, hooks: { [event]: [{ command: "..." }] } }`. The loader identifies Nori hooks by checking if the command path contains "notify-hook.sh".
 
 **Mixin composition system**: Profiles specify mixins in profile.json as `{"mixins": {"base": {}, "swe": {}}}`. The loader processes mixins in alphabetical order for deterministic precedence. When multiple mixins provide the same file, last writer wins. When multiple mixins provide the same directory, contents are merged. Conditional mixins are automatically injected based on user tier (see @/src/cli/features/cursor-agent/profiles/loader.ts).
 
