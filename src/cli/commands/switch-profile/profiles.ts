@@ -46,8 +46,9 @@ export const registerSwitchProfileCommand = (args: {
       // Run install in non-interactive mode with skipUninstall
       // This preserves custom user profiles during the profile switch
       info({ message: "Applying profile configuration..." });
-      const { main: installMain } =
-        await import("@/cli/commands/install/install.js");
+      const { main: installMain } = await import(
+        "@/cli/commands/install/install.js"
+      );
       await installMain({
         nonInteractive: true,
         skipUninstall: true,

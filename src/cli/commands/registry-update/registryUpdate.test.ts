@@ -117,10 +117,8 @@ describe("registry-update", () => {
       );
 
       const buffer = await fs.readFile(tarballPath);
-      const arrayBuffer = buffer.buffer.slice(
-        buffer.byteOffset,
-        buffer.byteOffset + buffer.byteLength,
-      );
+      const arrayBuffer = new ArrayBuffer(buffer.byteLength);
+      new Uint8Array(arrayBuffer).set(buffer);
       return arrayBuffer;
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
