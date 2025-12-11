@@ -16,7 +16,7 @@ import {
 import { success, info, warn } from "@/cli/logger.js";
 import { substituteTemplatePaths } from "@/utils/template.js";
 
-import type { ValidationResult } from "@/cli/features/claude-code/loaderRegistry.js";
+import type { ValidationResult } from "@/cli/features/agentRegistry.js";
 import type { ProfileLoader } from "@/cli/features/claude-code/profiles/profileLoaderRegistry.js";
 
 // Get directory of this loader file
