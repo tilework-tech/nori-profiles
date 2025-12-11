@@ -34,6 +34,27 @@ export type PromptConfig = {
 };
 
 /**
+ * Format an array of feature names into a human-readable string
+ * @param features - Array of feature names
+ *
+ * @returns A comma-separated string with "and" before the last item
+ */
+const formatFeatureList = (features: Array<string>): string => {
+  if (features.length === 0) {
+    return "";
+  }
+  if (features.length === 1) {
+    return features[0];
+  }
+  if (features.length === 2) {
+    return `${features[0]} and ${features[1]}`;
+  }
+  const allButLast = features.slice(0, -1).join(", ");
+  const last = features[features.length - 1];
+  return `${allButLast}, and ${last}`;
+};
+
+/**
  * Prompt user for confirmation before uninstalling
  * @param args - Configuration arguments
  * @param args.installDir - Installation directory
@@ -213,10 +234,21 @@ export const generatePromptConfig = async (args: {
 
   console.log();
 
-  // Ask if user wants to remove global settings (hooks, statusline, and global slashcommands) from ~/.claude
+  // Get the agent's global loaders
+  const agentImpl = AgentRegistry.getInstance().get({ name: selectedAgent });
+  const globalLoaders = agentImpl.getGlobalLoaders();
+
+  // If agent has no global features, skip the prompt
+  if (globalLoaders.length === 0) {
+    return { installDir, removeGlobalSettings: false, selectedAgent };
+  }
+
+  // Ask if user wants to remove global settings
+  const featureList = formatFeatureList(
+    globalLoaders.map((l) => l.humanReadableName),
+  );
   warn({
-    message:
-      "Hooks, statusline, and global slash commands are installed in ~/.claude/ and are shared across all Nori installations.",
+    message: `Global settings (${featureList}) are shared across all Nori installations.`,
   });
   info({
     message: "If you have other Nori installations, you may want to keep them.",
@@ -224,8 +256,7 @@ export const generatePromptConfig = async (args: {
   console.log();
 
   const removeGlobal = await promptUser({
-    prompt:
-      "Do you want to remove hooks, statusline, and global slash commands from ~/.claude/? (y/n): ",
+    prompt: `Do you want to remove ${featureList}? (y/n): `,
   });
 
   const removeGlobalSettings = removeGlobal.match(/^[Yy]$/) ? true : false;
@@ -346,18 +377,16 @@ export const runUninstall = async (args: {
   const registry = agentImpl.getLoaderRegistry();
   const loaders = registry.getAllReversed();
 
+  // Get the loader names for global features from the agent
+  const globalLoaderNames = agentImpl.getGlobalLoaders().map((l) => l.name);
+
   // Execute uninstallers sequentially to avoid race conditions
   // (hooks and statusline both read/write settings.json)
   for (const loader of loaders) {
-    // Skip hooks, statusline, and slashcommands loaders if removeGlobalSettings is false
-    if (
-      !removeGlobalSettings &&
-      (loader.name === "hooks" ||
-        loader.name === "statusline" ||
-        loader.name === "slashcommands")
-    ) {
+    // Skip global feature loaders if removeGlobalSettings is false
+    if (!removeGlobalSettings && globalLoaderNames.includes(loader.name)) {
       info({
-        message: `Skipping ${loader.name} uninstall (preserving ~/.claude/)`,
+        message: `Skipping ${loader.name} uninstall (preserving global settings)`,
       });
       continue;
     }
