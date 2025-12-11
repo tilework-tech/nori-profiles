@@ -10,16 +10,17 @@ import { fileURLToPath } from "url";
 
 import { isPaidInstall, type Config } from "@/cli/config.js";
 import { getCursorProfilesDir, getCursorSettingsFile } from "@/cli/env.js";
-import {
-  readProfileMetadata,
-  type ProfileMetadata,
-} from "@/cli/features/profiles/metadata.js";
 import { success, info, warn } from "@/cli/logger.js";
 
 import type {
   Loader,
   ValidationResult,
 } from "@/cli/features/loaderRegistry.js";
+
+import {
+  readProfileMetadata,
+  type ProfileMetadata,
+} from "@/cli/features/profiles/metadata.js";
 
 // Get directory of this loader file
 const __filename = fileURLToPath(import.meta.url);

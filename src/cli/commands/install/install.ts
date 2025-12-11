@@ -46,41 +46,76 @@ import { normalizeInstallDir, getInstallDirs } from "@/utils/path.js";
 import type { Command } from "commander";
 
 /**
+ * Open a URL in the default browser
+ * @param args - Configuration arguments
+ * @param args.url - URL to open
+ */
+const openBrowser = (args: { url: string }): void => {
+  const { url } = args;
+  const platform = process.platform;
+
+  let command: string;
+  if (platform === "darwin") {
+    command = `open "${url}"`;
+  } else if (platform === "win32") {
+    command = `start "${url}"`;
+  } else {
+    // Linux and other Unix-like systems
+    command = `xdg-open "${url}"`;
+  }
+
+  try {
+    execSync(command, { stdio: "ignore" });
+  } catch (err: any) {
+    warn({ message: `Could not open browser: ${err.message}` });
+  }
+};
+
+/**
  * Get available profiles from both source and installed locations
- * Creates a superset of all available profiles
+ * Separates built-in profiles from user-defined profiles
  *
  * @param args - Configuration arguments
  * @param args.installDir - Installation directory
  * @param args.agent - AI agent implementation
  *
- * @returns Array of available profiles with names and descriptions
+ * @returns Object with builtIn and userDefined profile arrays
  */
 const getAvailableProfiles = async (args: {
   installDir: string;
   agent: ReturnType<typeof AgentRegistry.prototype.get>;
-}): Promise<Array<{ name: string; description: string }>> => {
+}): Promise<{
+  builtIn: Array<{ name: string; description: string }>;
+  userDefined: Array<{ name: string; description: string }>;
+}> => {
   const { installDir, agent } = args;
-  const profilesMap = new Map<string, { name: string; description: string }>();
+  const builtInProfiles: Array<{ name: string; description: string }> = [];
+  const builtInNames = new Set<string>();
 
-  // Get profiles from package source directory
+  // Get profiles from package source directory (built-in profiles)
   const sourceProfiles = await agent.listSourceProfiles();
   for (const profile of sourceProfiles) {
-    profilesMap.set(profile.name, profile);
+    builtInProfiles.push(profile);
+    builtInNames.add(profile.name);
   }
 
-  // Get installed profiles (may include user-added profiles)
+  // Get installed profiles (user-defined profiles)
+  const userDefinedProfiles: Array<{ name: string; description: string }> = [];
   const installedProfileNames = await agent.listProfiles({ installDir });
   for (const name of installedProfileNames) {
-    // Only add if not already in source profiles (source takes precedence for description)
-    if (!profilesMap.has(name)) {
-      profilesMap.set(name, {
+    // Only add if not already in built-in profiles
+    if (!builtInNames.has(name)) {
+      userDefinedProfiles.push({
         name,
-        description: "User-installed profile",
+        description: "User-defined profile",
       });
     }
   }
 
-  return Array.from(profilesMap.values());
+  return {
+    builtIn: builtInProfiles,
+    userDefined: userDefinedProfiles,
+  };
 };
 
 /**
@@ -138,39 +173,175 @@ export const generatePromptConfig = async (args: {
     console.log();
   }
 
-  // Prompt for credentials
-  info({
-    message: wrapText({
-      text: "Nori Watchtower is our backend service that enables shared knowledge features - search and recall past solutions across your team, save learnings for future sessions, and server-side documentation with versioning. If you have Watchtower credentials (you should have received them from Josh or Amol), enter your email to enable these features. Otherwise, press enter to continue with local-only features.",
-    }),
-  });
-  console.log();
-
-  const username = await promptUser({
-    prompt: "Email address (Watchtower) or hit enter to skip: ",
-  });
-
+  // Initialize auth variable (will be set later in server prompts)
   let auth: {
     username: string;
     password: string;
     organizationUrl: string;
   } | null = null;
 
-  if (username && username.trim() !== "") {
+  // Get available profiles from both source and installed locations
+  const { builtIn: builtInProfiles, userDefined: userDefinedProfiles } =
+    await getAvailableProfiles({ installDir, agent });
+
+  if (builtInProfiles.length === 0) {
+    error({ message: "No profiles found. This should not happen." });
+    process.exit(1);
+  }
+
+  // Find senior-swe profile for recommendation
+  const seniorSweProfile = builtInProfiles.find((p) => p.name === "senior-swe");
+  if (!seniorSweProfile) {
+    error({ message: "senior-swe profile not found. This should not happen." });
+    process.exit(1);
+  }
+
+  // Display senior-swe recommendation
+  console.log();
+  const seniorSweName = boldWhite({ text: "senior-swe:" });
+  console.log(seniorSweName);
+  console.log(gray({ text: seniorSweProfile.description }));
+  console.log();
+
+  // Display other built-in profiles
+  const otherBuiltIns = builtInProfiles
+    .filter((p) => p.name !== "senior-swe")
+    .map((p) => p.name);
+  if (otherBuiltIns.length > 0) {
+    info({
+      message: `Other built-in profiles include: ${otherBuiltIns.join(", ")} (type "learn more" to see descriptions)`,
+    });
+    console.log();
+  }
+
+  // Display user-defined profiles if any
+  if (userDefinedProfiles.length > 0) {
+    info({ message: "Here are user-defined profiles you already have:" });
+    console.log();
+    userDefinedProfiles.forEach((p, i) => {
+      const number = brightCyan({ text: `${i + 1}.` });
+      const name = boldWhite({ text: p.name });
+      const description = gray({ text: p.description });
+
+      console.log(`${number} ${name}`);
+      console.log(`   ${description}`);
+      console.log();
+    });
+  }
+
+  // Initial profile choice
+  let selectedProfileName: string;
+  while (true) {
+    const initialChoice = await promptUser({
+      prompt:
+        'Would you like to choose senior-swe or choose another? (Type "senior-swe", "another", or "learn more"): ',
+    });
+
+    const choice = initialChoice.trim().toLowerCase();
+
+    if (choice === "senior-swe") {
+      selectedProfileName = "senior-swe";
+      info({ message: 'Loading "senior-swe" profile...' });
+      break;
+    } else if (choice === "learn more" || choice === "another") {
+      // Show all profiles with descriptions
+      console.log();
+      info({
+        message: wrapText({
+          text: "Available profiles:",
+        }),
+      });
+      console.log();
+
+      const allProfiles = [...builtInProfiles, ...userDefinedProfiles];
+      allProfiles.forEach((p, i) => {
+        const number = brightCyan({ text: `${i + 1}.` });
+        const name = boldWhite({ text: p.name });
+        const description = gray({ text: p.description });
+
+        console.log(`${number} ${name}`);
+        console.log(`   ${description}`);
+        console.log();
+      });
+
+      // Let user select from numbered list
+      while (true) {
+        const response = await promptUser({
+          prompt: `Select a profile (1-${allProfiles.length}): `,
+        });
+
+        const selectedIndex = parseInt(response) - 1;
+        if (selectedIndex >= 0 && selectedIndex < allProfiles.length) {
+          const selected = allProfiles[selectedIndex];
+          info({ message: `Loading "${selected.name}" profile...` });
+          selectedProfileName = selected.name;
+          break;
+        }
+
+        // Invalid selection - show error and loop
+        error({
+          message: `Invalid selection "${response}". Please enter a number between 1 and ${allProfiles.length}.`,
+        });
+        console.log();
+      }
+      break;
+    } else {
+      error({
+        message: `Invalid choice "${initialChoice}". Please type "senior-swe", "another", or "learn more".`,
+      });
+      console.log();
+    }
+  }
+
+  // Nori servers section
+  console.log();
+  info({ message: boldWhite({ text: "Nori servers:" }) });
+  console.log();
+
+  // Nori Registry
+  info({
+    message:
+      "Nori Registry: You can share profiles across a team using a private registry.",
+  });
+  console.log();
+
+  const registryAuths = await promptRegistryAuths({
+    existingRegistryAuths: existingConfig?.registryAuths ?? null,
+  });
+
+  console.log();
+
+  // Nori Watchtower
+  info({
+    message:
+      "Nori Watchtower: A context server for providing your agent institutional memory.",
+  });
+  console.log();
+
+  info({
+    message: "Do you have a login for a Nori server?",
+  });
+  const hasLogin = await promptUser({
+    prompt: "(Y/n): ",
+  });
+
+  if (hasLogin.match(/^[Yy]$/)) {
+    const username = await promptUser({
+      prompt: "Email address (Watchtower): ",
+    });
+
     const password = await promptUser({
-      prompt: "Enter your password: ",
+      prompt: "Password: ",
       hidden: true,
     });
 
     const orgUrl = await promptUser({
-      prompt:
-        "Enter your organization URL (e.g., http://localhost:3000 for local dev): ",
+      prompt: "Organization URL (e.g., http://localhost:3000 for local dev): ",
     });
 
-    if (!password || !orgUrl) {
+    if (!username || !password || !orgUrl) {
       error({
-        message:
-          "Password and organization URL are required for backend installation",
+        message: "Email, password, and organization URL are all required.",
       });
       process.exit(1);
     }
@@ -181,66 +352,33 @@ export const generatePromptConfig = async (args: {
       organizationUrl: orgUrl.trim(),
     };
 
-    info({ message: "Installing with backend support..." });
+    info({ message: "Watchtower authentication configured." });
     console.log();
   } else {
-    info({ message: "Great. Let's move on to selecting your profile." });
+    // Ask if they want a Nori server
     console.log();
-  }
-
-  // Get available profiles from both source and installed locations
-  const profiles = await getAvailableProfiles({ installDir, agent });
-
-  if (profiles.length === 0) {
-    error({ message: "No profiles found. This should not happen." });
-    process.exit(1);
-  }
-
-  // Display profiles
-  info({
-    message: wrapText({
-      text: "Please select a profile. Each profile contains a complete configuration with skills, subagents, and commands tailored for different use cases.",
-    }),
-  });
-  console.log();
-
-  profiles.forEach((p, i) => {
-    const number = brightCyan({ text: `${i + 1}.` });
-    const name = boldWhite({ text: p.name });
-    const description = gray({ text: p.description });
-
-    console.log(`${number} ${name}`);
-    console.log(`   ${description}`);
-    console.log();
-  });
-
-  // Loop until valid selection
-  let selectedProfileName: string;
-  while (true) {
-    const response = await promptUser({
-      prompt: `Select a profile (1-${profiles.length}): `,
+    info({ message: "Would you like a Nori server?" });
+    const wantServer = await promptUser({
+      prompt: "(Y/n): ",
     });
 
-    const selectedIndex = parseInt(response) - 1;
-    if (selectedIndex >= 0 && selectedIndex < profiles.length) {
-      const selected = profiles[selectedIndex];
-      info({ message: `Loading "${selected.name}" profile...` });
-      selectedProfileName = selected.name;
-      break;
+    if (wantServer.match(/^[Yy]$/)) {
+      info({
+        message: "Opening https://usenori.ai/#contact in your browser...",
+      });
+      openBrowser({ url: "https://usenori.ai/#contact" });
+      console.log();
     }
-
-    // Invalid selection - show error and loop
-    error({
-      message: `Invalid selection "${response}". Please enter a number between 1 and ${profiles.length}.`,
-    });
-    console.log();
   }
 
-  // Prompt for private registry authentication
+  // Auto-update prompt (defaults to OFF)
   console.log();
-  const registryAuths = await promptRegistryAuths({
-    existingRegistryAuths: existingConfig?.registryAuths ?? null,
+  info({ message: "Would you like Nori to auto-update?" });
+  const enableAutoupdate = await promptUser({
+    prompt: "(y/n) [default: n]: ",
   });
+
+  const autoupdate = enableAutoupdate.match(/^[Yy]$/) ? "enabled" : "disabled";
 
   // Build config directly
   return {
@@ -251,6 +389,7 @@ export const generatePromptConfig = async (args: {
     installDir,
     registryAuths: registryAuths ?? null,
     installedAgents: [agentName],
+    autoupdate,
   };
 };
 
@@ -355,7 +494,23 @@ export const interactive = async (args?: {
   // Display banner
   displayNoriBanner();
   console.log();
-  info({ message: "Let's personalize Nori to your needs." });
+  info({
+    message: wrapText({
+      text: "Nori is a toolset for building customizations for your coding agent.",
+    }),
+  });
+  console.log();
+  info({
+    message: wrapText({
+      text: 'Nori customizes your agent by creating configurable "Profiles" that are encoded with specialized behaviors. Profiles are built by modifying available context configurations like Claude.md, Skills, and Subagents. You can build Profiles to match your personal development flow, target complicated areas of code, or tackle specific projects.',
+    }),
+  });
+  console.log();
+  info({
+    message: wrapText({
+      text: "We recommend starting with our default senior-swe profile to get a feel for how Nori works.",
+    }),
+  });
   console.log();
 
   // Load existing config
