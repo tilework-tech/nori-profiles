@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 let mockClaudeDir = "/tmp/test-claude";
 let mockConfigPath = "/tmp/test-config.json";
 
-vi.mock("@/cli/env.js", () => ({
+vi.mock("@/cli/features/claude-code/paths.js", () => ({
   getClaudeDir: () => mockClaudeDir,
   getClaudeSettingsFile: () => path.join(mockClaudeDir, "settings.json"),
   getClaudeHomeDir: () => mockClaudeDir,
@@ -23,6 +23,9 @@ vi.mock("@/cli/env.js", () => ({
   getClaudeMdFile: () => path.join(mockClaudeDir, "CLAUDE.md"),
   getClaudeSkillsDir: () => path.join(mockClaudeDir, "skills"),
   getClaudeProfilesDir: () => path.join(mockClaudeDir, "profiles"),
+}));
+
+vi.mock("@/cli/env.js", () => ({
   MCP_ROOT: "/mock/mcp/root",
 }));
 

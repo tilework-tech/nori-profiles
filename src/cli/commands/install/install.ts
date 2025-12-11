@@ -26,8 +26,8 @@ import {
   isPaidInstall,
   type Config,
 } from "@/cli/config.js";
-import { getClaudeProfilesDir } from "@/cli/env.js";
 import { AgentRegistry } from "@/cli/features/agentRegistry.js";
+import { getClaudeProfilesDir } from "@/cli/features/claude-code/paths.js";
 import {
   error,
   success,
