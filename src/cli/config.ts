@@ -20,6 +20,18 @@ export type RegistryAuth = {
 };
 
 /**
+ * Authentication credentials - supports both legacy password and new refresh token
+ */
+export type AuthCredentials = {
+  username: string;
+  organizationUrl: string;
+  // Token-based auth (preferred)
+  refreshToken?: string | null;
+  // Legacy password-based auth (deprecated, will be removed)
+  password?: string | null;
+};
+
+/**
  * Agent-specific configuration
  */
 export type AgentConfig = {
@@ -31,11 +43,7 @@ export type AgentConfig = {
  * Contains all persisted fields from disk plus required installDir
  */
 export type Config = {
-  auth?: {
-    username: string;
-    password: string;
-    organizationUrl: string;
-  } | null;
+  auth?: AuthCredentials | null;
   /** @deprecated Use agents.claude-code.profile instead */
   profile?: {
     baseProfile: string;
@@ -81,6 +89,22 @@ export const getDefaultProfile = (): { baseProfile: string } => {
  */
 export const isPaidInstall = (args: { config: Config }): boolean => {
   return args.config.auth != null;
+};
+
+/**
+ * Check if config uses legacy password-based authentication
+ * @param args - Configuration arguments
+ * @param args.config - The config to check
+ *
+ * @returns True if the config has password but no refreshToken (needs migration)
+ */
+export const isLegacyPasswordConfig = (args: { config: Config }): boolean => {
+  const { config } = args;
+  if (config.auth == null) {
+    return false;
+  }
+  // Legacy if has password but no refreshToken
+  return config.auth.password != null && config.auth.refreshToken == null;
 };
 
 /**
@@ -170,18 +194,27 @@ export const loadConfig = async (args: {
       };
 
       // Check if auth credentials exist and are valid
+      // Support both token-based auth (refreshToken) and legacy password-based auth
+      const hasUsername =
+        config.username && typeof config.username === "string";
+      const hasOrganizationUrl =
+        config.organizationUrl && typeof config.organizationUrl === "string";
+      const hasRefreshToken =
+        config.refreshToken && typeof config.refreshToken === "string";
+      const hasPassword =
+        config.password && typeof config.password === "string";
+
+      // Require either refreshToken or password
       if (
-        config.username &&
-        config.password &&
-        config.organizationUrl &&
-        typeof config.username === "string" &&
-        typeof config.password === "string" &&
-        typeof config.organizationUrl === "string"
+        hasUsername &&
+        hasOrganizationUrl &&
+        (hasRefreshToken || hasPassword)
       ) {
         result.auth = {
           username: config.username,
-          password: config.password,
           organizationUrl: config.organizationUrl,
+          refreshToken: hasRefreshToken ? config.refreshToken : null,
+          password: hasPassword ? config.password : null,
         };
       }
 
@@ -273,7 +306,8 @@ export const loadConfig = async (args: {
  * Save configuration to disk
  * @param args - Configuration arguments
  * @param args.username - User's username (null to skip auth)
- * @param args.password - User's password (null to skip auth)
+ * @param args.password - User's password (deprecated, use refreshToken instead)
+ * @param args.refreshToken - Firebase refresh token (preferred over password)
  * @param args.organizationUrl - Organization URL (null to skip auth)
  * @param args.profile - Profile selection (null to skip profile) - deprecated, use agents instead
  * @param args.sendSessionTranscript - Session transcript setting (null to skip)
@@ -285,7 +319,8 @@ export const loadConfig = async (args: {
  */
 export const saveConfig = async (args: {
   username: string | null;
-  password: string | null;
+  password?: string | null;
+  refreshToken?: string | null;
   organizationUrl: string | null;
   profile?: { baseProfile: string } | null;
   sendSessionTranscript?: "enabled" | "disabled" | null;
@@ -298,6 +333,7 @@ export const saveConfig = async (args: {
   const {
     username,
     password,
+    refreshToken,
     organizationUrl,
     profile,
     sendSessionTranscript,
@@ -312,13 +348,22 @@ export const saveConfig = async (args: {
   const config: any = {};
 
   // Add auth credentials if provided
-  if (username != null && password != null && organizationUrl != null) {
+  // Prefer refreshToken over password (token-based auth is more secure)
+  if (username != null && organizationUrl != null) {
     // Normalize organization URL to remove trailing slashes
     const normalizedUrl = normalizeUrl({ baseUrl: organizationUrl });
 
     config.username = username;
-    config.password = password;
     config.organizationUrl = normalizedUrl;
+
+    // If refreshToken is provided, use it and don't store password
+    if (refreshToken != null) {
+      config.refreshToken = refreshToken;
+      // Explicitly do NOT save password when refreshToken is present
+    } else if (password != null) {
+      // Legacy: only save password if no refreshToken
+      config.password = password;
+    }
   }
 
   // Add agents if provided (new multi-agent format)
@@ -376,6 +421,7 @@ const configSchema = {
   properties: {
     username: { type: "string" },
     password: { type: "string" },
+    refreshToken: { type: "string" },
     organizationUrl: { type: "string" },
     sendSessionTranscript: {
       type: "string",
