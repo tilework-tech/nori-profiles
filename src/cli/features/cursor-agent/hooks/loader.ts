@@ -8,8 +8,8 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 
 import {
-  getCursorDir,
-  getCursorHooksFile,
+  getCursorHomeDir,
+  getCursorHomeHooksFile,
 } from "@/cli/features/cursor-agent/paths.js";
 import { success, info, warn } from "@/cli/logger.js";
 
@@ -89,8 +89,8 @@ const isNoriSlashCommandInterceptHook = (args: {
  */
 const configureHooks = async (args: { config: Config }): Promise<void> => {
   const { config } = args;
-  const cursorDir = getCursorDir({ installDir: config.installDir });
-  const hooksFile = getCursorHooksFile({ installDir: config.installDir });
+  const cursorDir = getCursorHomeDir();
+  const hooksFile = getCursorHomeHooksFile();
 
   info({ message: "Configuring Cursor hooks..." });
 
@@ -174,8 +174,8 @@ const configureHooks = async (args: { config: Config }): Promise<void> => {
  * @param args.config - Runtime configuration
  */
 const removeHooks = async (args: { config: Config }): Promise<void> => {
-  const { config } = args;
-  const hooksFile = getCursorHooksFile({ installDir: config.installDir });
+  const { config: _config } = args;
+  const hooksFile = getCursorHomeHooksFile();
 
   info({ message: "Removing Nori hooks from Cursor hooks.json..." });
 
@@ -244,8 +244,8 @@ const removeHooks = async (args: { config: Config }): Promise<void> => {
 const validate = async (args: {
   config: Config;
 }): Promise<ValidationResult> => {
-  const { config } = args;
-  const hooksFile = getCursorHooksFile({ installDir: config.installDir });
+  const { config: _config } = args;
+  const hooksFile = getCursorHomeHooksFile();
   const errors: Array<string> = [];
 
   // Check if hooks.json exists

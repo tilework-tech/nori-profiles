@@ -72,7 +72,9 @@ The loader handles idempotent installation (avoids duplicate hooks), clean unins
 
 ### Things to Know
 
-**Path Helpers (paths.ts):** All Cursor-specific path functions live in @/src/cli/features/cursor-agent/paths.ts:
+**Path Helpers (paths.ts):** All Cursor-specific path functions live in @/src/cli/features/cursor-agent/paths.ts. There are two categories:
+
+**Project-relative paths** (take `installDir` param) - for profile-specific features:
 
 | Function | Returns |
 |----------|---------|
@@ -83,6 +85,16 @@ The loader handles idempotent installation (avoids duplicate hooks), clean unins
 | `getCursorHooksFile({ installDir })` | `{installDir}/.cursor/hooks.json` |
 | `getCursorCommandsDir({ installDir })` | `{installDir}/.cursor/commands` |
 | `getCursorSubagentsDir({ installDir })` | `{installDir}/.cursor/subagents` |
+
+**Home-based paths** (no params, always use `os.homedir()`) - for global features that must be accessible from any project:
+
+| Function | Returns |
+|----------|---------|
+| `getCursorHomeDir()` | `~/.cursor` |
+| `getCursorHomeHooksFile()` | `~/.cursor/hooks.json` |
+| `getCursorHomeCommandsDir()` | `~/.cursor/commands` |
+
+Global features (hooks, global slash commands) use home-based paths because Cursor looks for these in the user's home directory regardless of the current working directory.
 
 **Key differences from claude-code:**
 - Uses AGENTS.md instead of CLAUDE.md for instructions
@@ -126,19 +138,18 @@ Commands use regex matchers in `InterceptedSlashCommand.matchers`. The `/nori-sw
 - `profile.json`: Profile metadata with `mixins` field specifying which mixins to compose
 - `rules/`: Directory containing rule subdirectories, each with a RULE.md (typically inherited from mixins)
 
-**Available profiles:** cursor-agent provides four profiles that mirror claude-code profiles (minus documenter):
+**Available profiles:** cursor-agent provides four profiles:
 
 | Profile | Mixins | Description |
 |---------|--------|-------------|
-| amol | base, swe | Opinionated workflow with TDD, structured planning, rule-based guidance |
-| senior-swe | base, swe | Dual-mode: "copilot" (interactive) or "full-send" (autonomous) |
-| product-manager | base, swe | High technical autonomy, product-focused questions, auto-creates PRs |
+| amol | base, docs, swe | Opinionated workflow with TDD, structured planning, rule-based guidance |
+| senior-swe | base, docs, swe | Dual-mode: "copilot" (interactive) or "full-send" (autonomous) |
+| product-manager | base, docs, swe | High technical autonomy, product-focused questions, auto-creates PRs |
 | none | base | Minimal infrastructure only, no behavioral modifications |
 
-The documenter profile is not available because it relies on docs-specific features (updating-noridocs skill) that use SKILL.md files.
-
 **Mixin content:**
-- `_base` mixin: Contains `using-rules` rule for rule usage guidance, `using-subagents` rule for subagent invocation, and the `subagents/` directory with subagent prompt files
+- `_base` mixin: Contains `using-rules` rule for rule usage guidance, `using-subagents` rule for subagent invocation, and the `subagents/` directory with subagent prompt files (e.g., `nori-web-search-researcher`)
+- `_docs` mixin: Contains `updating-noridocs` rule for documentation workflow and subagents for documentation (`nori-initial-documenter` for creating initial documentation, `nori-change-documenter` for updating documentation after code changes)
 - `_swe` mixin: Contains software engineering rules mirroring claude-code skills (test-driven-development, systematic-debugging, brainstorming, etc.)
 
 **Subagents system:** Cursor lacks a built-in Task tool like Claude Code. Subagents provide equivalent functionality by invoking `cursor-agent` CLI in headless mode (`cursor-agent -p "prompt" --force`). Subagent definitions are `.md` files stored in `~/.cursor/subagents/`. The `using-subagents` rule documents how to invoke subagents and lists available subagents (e.g., `nori-web-search-researcher`).
