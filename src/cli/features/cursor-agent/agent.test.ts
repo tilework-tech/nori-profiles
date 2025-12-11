@@ -37,19 +37,14 @@ describe("cursorAgent", () => {
     });
   });
 
-  describe("getGlobalFeatureNames", () => {
-    test("returns hooks and slash commands (no statusline)", () => {
-      const globalFeatures = cursorAgent.getGlobalFeatureNames();
+  describe("getGlobalLoaders", () => {
+    test("returns hooks and slashcommands with human-readable names", () => {
+      const globalLoaders = cursorAgent.getGlobalLoaders();
 
-      expect(globalFeatures).toEqual(["hooks", "slash commands"]);
-    });
-  });
-
-  describe("getGlobalLoaderNames", () => {
-    test("returns hooks and slashcommands loader names", () => {
-      const globalLoaders = cursorAgent.getGlobalLoaderNames();
-
-      expect(globalLoaders).toEqual(["hooks", "slashcommands"]);
+      expect(globalLoaders).toEqual([
+        { name: "hooks", humanReadableName: "hooks" },
+        { name: "slashcommands", humanReadableName: "slash commands" },
+      ]);
     });
   });
 

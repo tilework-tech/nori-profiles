@@ -78,44 +78,29 @@ describe("AgentRegistry", () => {
   });
 
   describe("agent interface", () => {
-    test("claude-code agent returns global feature names", () => {
+    test("claude-code agent returns global loaders with human-readable names", () => {
       const registry = AgentRegistry.getInstance();
       const agent = registry.get({ name: "claude-code" });
 
-      const globalFeatures = agent.getGlobalFeatureNames();
+      const globalLoaders = agent.getGlobalLoaders();
 
-      expect(globalFeatures).toEqual([
-        "hooks",
-        "statusline",
-        "global slash commands",
+      expect(globalLoaders).toEqual([
+        { name: "hooks", humanReadableName: "hooks" },
+        { name: "statusline", humanReadableName: "statusline" },
+        { name: "slashcommands", humanReadableName: "global slash commands" },
       ]);
     });
 
-    test("cursor-agent returns global feature names (hooks and slash commands, no statusline)", () => {
+    test("cursor-agent returns global loaders (hooks and slashcommands, no statusline)", () => {
       const registry = AgentRegistry.getInstance();
       const agent = registry.get({ name: "cursor-agent" });
 
-      const globalFeatures = agent.getGlobalFeatureNames();
+      const globalLoaders = agent.getGlobalLoaders();
 
-      expect(globalFeatures).toEqual(["hooks", "slash commands"]);
-    });
-
-    test("claude-code agent returns global loader names", () => {
-      const registry = AgentRegistry.getInstance();
-      const agent = registry.get({ name: "claude-code" });
-
-      const globalLoaders = agent.getGlobalLoaderNames();
-
-      expect(globalLoaders).toEqual(["hooks", "statusline", "slashcommands"]);
-    });
-
-    test("cursor-agent returns global loader names (hooks and slashcommands, no statusline)", () => {
-      const registry = AgentRegistry.getInstance();
-      const agent = registry.get({ name: "cursor-agent" });
-
-      const globalLoaders = agent.getGlobalLoaderNames();
-
-      expect(globalLoaders).toEqual(["hooks", "slashcommands"]);
+      expect(globalLoaders).toEqual([
+        { name: "hooks", humanReadableName: "hooks" },
+        { name: "slashcommands", humanReadableName: "slash commands" },
+      ]);
     });
 
     test("claude-code agent provides LoaderRegistry", () => {

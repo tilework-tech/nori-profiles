@@ -46,12 +46,12 @@ export const claudeCodeAgent: Agent = {
     return LoaderRegistry.getInstance();
   },
 
-  getGlobalFeatureNames: () => {
-    return ["hooks", "statusline", "global slash commands"];
-  },
-
-  getGlobalLoaderNames: () => {
-    return ["hooks", "statusline", "slashcommands"];
+  getGlobalLoaders: () => {
+    return [
+      { name: "hooks", humanReadableName: "hooks" },
+      { name: "statusline", humanReadableName: "statusline" },
+      { name: "slashcommands", humanReadableName: "global slash commands" },
+    ];
   },
 
   listProfiles: async (args: {

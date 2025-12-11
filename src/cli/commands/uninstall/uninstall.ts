@@ -187,17 +187,19 @@ export const generatePromptConfig = async (args: {
 
   console.log();
 
-  // Get the agent's global feature names
+  // Get the agent's global loaders
   const agentImpl = AgentRegistry.getInstance().get({ name: agentName });
-  const globalFeatures = agentImpl.getGlobalFeatureNames();
+  const globalLoaders = agentImpl.getGlobalLoaders();
 
   // If agent has no global features, skip the prompt
-  if (globalFeatures.length === 0) {
+  if (globalLoaders.length === 0) {
     return { installDir, removeGlobalSettings: false };
   }
 
   // Ask if user wants to remove global settings
-  const featureList = formatFeatureList(globalFeatures);
+  const featureList = formatFeatureList(
+    globalLoaders.map((l) => l.humanReadableName),
+  );
   warn({
     message: `Global settings (${featureList}) are shared across all Nori installations.`,
   });
@@ -326,7 +328,7 @@ export const runUninstall = async (args: {
   const loaders = registry.getAllReversed();
 
   // Get the loader names for global features from the agent
-  const globalLoaderNames = agentImpl.getGlobalLoaderNames();
+  const globalLoaderNames = agentImpl.getGlobalLoaders().map((l) => l.name);
 
   // Execute uninstallers sequentially to avoid race conditions
   // (hooks and statusline both read/write settings.json)

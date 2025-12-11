@@ -46,12 +46,11 @@ export const cursorAgent: Agent = {
     return CursorLoaderRegistry.getInstance();
   },
 
-  getGlobalFeatureNames: () => {
-    return ["hooks", "slash commands"];
-  },
-
-  getGlobalLoaderNames: () => {
-    return ["hooks", "slashcommands"];
+  getGlobalLoaders: () => {
+    return [
+      { name: "hooks", humanReadableName: "hooks" },
+      { name: "slashcommands", humanReadableName: "slash commands" },
+    ];
   },
 
   listProfiles: async (args: {

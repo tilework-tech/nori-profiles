@@ -459,8 +459,7 @@ describe("uninstall prompt with agent-specific global features", () => {
       switchProfile: async () => {
         // Mock implementation - intentionally empty
       },
-      getGlobalFeatureNames: () => [], // Empty - no global features
-      getGlobalLoaderNames: () => [], // Empty - no global loaders
+      getGlobalLoaders: () => [], // Empty - no global features
     };
 
     const originalGet = AgentRegistry.getInstance().get.bind(
