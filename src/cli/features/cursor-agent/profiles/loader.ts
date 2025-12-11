@@ -7,7 +7,6 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
-import { isPaidInstall, type Config } from "@/cli/config.js";
 import { getCursorProfilesDir } from "@/cli/features/cursor-agent/paths.js";
 import {
   readProfileMetadata,
@@ -16,6 +15,7 @@ import {
 import { CursorProfileLoaderRegistry } from "@/cli/features/cursor-agent/profiles/profileLoaderRegistry.js";
 import { success, info, warn } from "@/cli/logger.js";
 
+import type { Config } from "@/cli/config.js";
 import type {
   Loader,
   ValidationResult,
@@ -30,74 +30,6 @@ const PROFILE_TEMPLATES_DIR = path.join(__dirname, "config");
 
 // Mixins directory (contains reusable profile components)
 const MIXINS_DIR = path.join(PROFILE_TEMPLATES_DIR, "_mixins");
-
-/**
- * Check if user is a paid tier user
- * @param args - Configuration arguments
- * @param args.config - Runtime configuration
- *
- * @returns True if user has auth credentials (paid install)
- */
-const isPaidUser = (args: { config: Config }): boolean => {
-  return isPaidInstall(args);
-};
-
-/**
- * Inject conditional mixins dynamically based on config and profile metadata
- *
- * This handles multi-criteria mixin injection:
- * 1. Cross-category paid mixin (_paid) - added for all paid users
- * 2. Category-specific tier mixins (_swe-paid) - added when:
- *    - User is paid AND
- *    - Profile contains that category mixin
- *
- * @param args - Function arguments
- * @param args.metadata - Profile metadata
- * @param args.config - Runtime configuration
- *
- * @returns Metadata with conditional mixins added if applicable
- */
-const injectConditionalMixins = (args: {
-  metadata: ProfileMetadata;
-  config: Config;
-}): ProfileMetadata => {
-  const { metadata, config } = args;
-
-  // Check if user is paid
-  const isPaid = isPaidUser({ config });
-
-  if (!isPaid) {
-    return metadata;
-  }
-
-  const newMixins = { ...metadata.mixins };
-
-  // Inject cross-category paid mixin if not already present
-  if (!("paid" in newMixins)) {
-    newMixins.paid = {};
-  }
-
-  // Inject category-specific paid mixins based on categories in profile
-  // Only inject if both:
-  // 1. The base category mixin is present (e.g., 'swe')
-  // 2. The corresponding tier-specific mixin is not already present (e.g., 'swe-paid')
-
-  const categories = Object.keys(metadata.mixins).filter(
-    (name) => !name.endsWith("-paid") && name !== "base" && name !== "paid",
-  );
-
-  for (const category of categories) {
-    const tierMixinName = `${category}-paid`;
-    if (!(tierMixinName in newMixins)) {
-      newMixins[tierMixinName] = {};
-    }
-  }
-
-  return {
-    ...metadata,
-    mixins: newMixins,
-  };
-};
 
 /**
  * Get mixin paths in precedence order (alphabetical)
@@ -161,7 +93,7 @@ const installProfiles = async (args: { config: Config }): Promise<void> => {
       // Remove existing profile directory if it exists
       await fs.rm(profileDestDir, { recursive: true, force: true });
 
-      // Read profile metadata and inject paid mixin if applicable
+      // Read profile metadata
       const profileJsonPath = path.join(profileSrcDir, "profile.json");
       let metadata: ProfileMetadata | null = null;
 
@@ -170,9 +102,6 @@ const installProfiles = async (args: { config: Config }): Promise<void> => {
         metadata = await readProfileMetadata({
           profileDir: profileSrcDir,
         });
-
-        // Inject conditional mixins if user is paid
-        metadata = injectConditionalMixins({ metadata, config });
       } catch {
         // No profile.json - skip composition
       }
@@ -430,7 +359,5 @@ export const profilesLoader: Loader = {
  * Export internal functions for testing
  */
 export const _testing = {
-  isPaidUser,
-  injectConditionalMixins,
   getMixinPaths,
 };
