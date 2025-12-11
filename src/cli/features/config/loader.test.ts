@@ -11,19 +11,27 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { getConfigPath } from "@/cli/config.js";
 
 import type { Config } from "@/cli/config.js";
+import type * as firebaseAuth from "firebase/auth";
 
 import { configLoader } from "./loader.js";
 
 // Mock Firebase SDK to avoid hitting real Firebase API
-vi.mock("firebase/auth", () => ({
-  signInWithEmailAndPassword: vi.fn().mockResolvedValue({
-    user: { refreshToken: "mock-refresh-token" },
-  }),
-}));
+vi.mock("firebase/auth", async (importOriginal) => {
+  const actual = (await importOriginal()) as typeof firebaseAuth;
+  return {
+    ...actual,
+    signInWithEmailAndPassword: vi.fn().mockResolvedValue({
+      user: { refreshToken: "mock-refresh-token" },
+    }),
+  };
+});
 
 vi.mock("@/providers/firebase.js", () => ({
   configureFirebase: vi.fn(),
-  getFirebase: vi.fn().mockReturnValue({ auth: {} }),
+  getFirebase: vi.fn().mockReturnValue({
+    auth: {},
+    app: { options: { projectId: "test-project" } },
+  }),
 }));
 
 describe("configLoader", () => {
