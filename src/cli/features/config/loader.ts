@@ -5,16 +5,20 @@
 
 import { unlinkSync, existsSync } from "fs";
 
+import { signInWithEmailAndPassword, AuthErrorCodes } from "firebase/auth";
+
 import {
   getConfigPath,
   loadConfig,
   saveConfig,
   isPaidInstall,
 } from "@/cli/config.js";
-import { info, success } from "@/cli/logger.js";
+import { info, success, error, debug } from "@/cli/logger.js";
+import { configureFirebase, getFirebase } from "@/providers/firebase.js";
 
 import type { Config } from "@/cli/config.js";
 import type { Loader } from "@/cli/features/agentRegistry.js";
+import type { AuthError } from "firebase/auth";
 
 /**
  * Install config file - save config to disk
@@ -32,6 +36,7 @@ const installConfig = async (args: { config: Config }): Promise<void> => {
   // Extract auth credentials from config
   const username = config.auth?.username ?? null;
   const password = config.auth?.password ?? null;
+  const refreshToken = config.auth?.refreshToken ?? null;
   const organizationUrl = config.auth?.organizationUrl ?? null;
 
   // Only include sendSessionTranscript for paid users
@@ -45,10 +50,71 @@ const installConfig = async (args: { config: Config }): Promise<void> => {
   const newAgents = config.installedAgents ?? [];
   const mergedAgents = [...new Set([...existingAgents, ...newAgents])];
 
-  // Save config to disk, preserving existing user preferences
+  // If we have password but no refresh token, authenticate to get a refresh token
+  // This converts password-based login to token-based storage
+  let tokenToSave = refreshToken;
+  if (password && !refreshToken && username) {
+    info({ message: "Authenticating to obtain secure token..." });
+    debug({ message: `  Email: ${username}` });
+    debug({ message: `  Organization URL: ${organizationUrl}` });
+
+    try {
+      configureFirebase();
+      const firebase = getFirebase();
+      debug({
+        message: `  Firebase project: ${firebase.app.options.projectId}`,
+      });
+
+      const userCredential = await signInWithEmailAndPassword(
+        firebase.auth,
+        username,
+        password,
+      );
+      tokenToSave = userCredential.user.refreshToken;
+      success({ message: "✓ Authentication successful" });
+    } catch (err) {
+      const authError = err as AuthError;
+      error({ message: "Authentication failed" });
+      error({ message: `  Email: ${username}` });
+      error({ message: `  Error code: ${authError.code}` });
+      error({ message: `  Error message: ${authError.message}` });
+
+      // Provide helpful hints based on error code
+      if (
+        authError.code === AuthErrorCodes.INVALID_PASSWORD ||
+        authError.code === AuthErrorCodes.INVALID_LOGIN_CREDENTIALS ||
+        authError.code === "auth/invalid-credential"
+      ) {
+        error({
+          message:
+            "  Hint: Check that your email and password are correct for the Nori backend",
+        });
+      } else if (authError.code === AuthErrorCodes.USER_DELETED) {
+        error({
+          message: "  Hint: This email is not registered. Contact support.",
+        });
+      } else if (
+        authError.code === AuthErrorCodes.TOO_MANY_ATTEMPTS_TRY_LATER
+      ) {
+        error({
+          message:
+            "  Hint: Too many failed attempts. Wait a few minutes and try again.",
+        });
+      } else if (authError.code === AuthErrorCodes.NETWORK_REQUEST_FAILED) {
+        error({
+          message: "  Hint: Network error. Check your internet connection.",
+        });
+      }
+
+      throw err;
+    }
+  }
+
+  // Save config to disk with refresh token (not password)
+  // This ensures we never store passwords, only secure tokens
   await saveConfig({
     username,
-    password,
+    refreshToken: tokenToSave,
     organizationUrl,
     profile: config.profile ?? null,
     sendSessionTranscript,
@@ -105,7 +171,7 @@ const uninstallConfig = async (args: { config: Config }): Promise<void> => {
   // Otherwise, update the config with remaining agents
   await saveConfig({
     username: existingConfig.auth?.username ?? null,
-    password: existingConfig.auth?.password ?? null,
+    refreshToken: existingConfig.auth?.refreshToken ?? null,
     organizationUrl: existingConfig.auth?.organizationUrl ?? null,
     profile: existingConfig.profile ?? null,
     sendSessionTranscript: existingConfig.sendSessionTranscript ?? null,
