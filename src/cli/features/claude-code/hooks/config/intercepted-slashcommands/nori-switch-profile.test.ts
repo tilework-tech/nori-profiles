@@ -10,6 +10,24 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import type { HookInput } from "./types.js";
 
+// Mock the paths module to prevent tests from writing to real ~/.claude/settings.json
+// The nori-switch-profile command runs installMain() which calls hooksLoader,
+// and hooksLoader uses getClaudeHomeSettingsFile() which defaults to ~/.claude/settings.json.
+// Without this mock, tests would pollute the real user's settings.
+let mockClaudeHomeDir: string;
+let mockClaudeHomeSettingsFile: string;
+
+vi.mock("@/cli/features/claude-code/paths.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    getClaudeHomeDir: () => mockClaudeHomeDir,
+    getClaudeHomeSettingsFile: () => mockClaudeHomeSettingsFile,
+    getClaudeHomeCommandsDir: () => path.join(mockClaudeHomeDir, "commands"),
+  };
+});
+
+// Import after mocking
 import { noriSwitchProfile } from "./nori-switch-profile.js";
 
 /**
@@ -37,6 +55,11 @@ describe("nori-switch-profile", () => {
     const claudeDir = path.join(testDir, ".claude");
     profilesDir = path.join(claudeDir, "profiles");
     configPath = path.join(testDir, ".nori-config.json");
+
+    // Set up mock paths to redirect hooks installation to temp directory
+    // This prevents tests from writing to the real ~/.claude/settings.json
+    mockClaudeHomeDir = claudeDir;
+    mockClaudeHomeSettingsFile = path.join(claudeDir, "settings.json");
 
     // Create profiles directory with test profiles
     await fs.mkdir(profilesDir, { recursive: true });
