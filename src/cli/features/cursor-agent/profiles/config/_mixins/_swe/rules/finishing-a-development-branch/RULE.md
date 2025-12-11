@@ -4,9 +4,9 @@ alwaysApply: false
 ---
 
 <required>
-*CRITICAL* Add the following steps to your Todo list using TodoWrite:
+*CRITICAL* Add the following steps to your Todo list using `todo_write`:
 
-1. Verify tests by using the project's test suite.
+1. Verify tests pass by using the project's test suite.
 
 ```bash
 # Run project's test suite

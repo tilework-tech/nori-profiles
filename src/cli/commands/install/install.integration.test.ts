@@ -10,6 +10,7 @@ import { getConfigPath } from "@/cli/config.js";
 import { getInstalledVersion } from "@/cli/version.js";
 
 import type * as childProcess from "child_process";
+import type * as firebaseAuth from "firebase/auth";
 
 import { main as installMain } from "./install.js";
 
@@ -89,6 +90,28 @@ vi.mock("@/cli/env.js", () => {
 vi.mock("@/cli/analytics.js", () => ({
   initializeAnalytics: vi.fn(),
   trackEvent: vi.fn(),
+}));
+
+// Mock Firebase SDK to avoid hitting real Firebase API
+vi.mock("firebase/auth", async (importOriginal) => {
+  const actual = (await importOriginal()) as typeof firebaseAuth;
+  return {
+    ...actual,
+    signInWithEmailAndPassword: vi.fn().mockResolvedValue({
+      user: {
+        refreshToken: "mock-refresh-token",
+      },
+    }),
+  };
+});
+
+// Mock Firebase provider
+vi.mock("@/providers/firebase.js", () => ({
+  configureFirebase: vi.fn(),
+  getFirebase: vi.fn().mockReturnValue({
+    auth: {},
+    app: { options: { projectId: "test-project" } },
+  }),
 }));
 
 describe("install integration test", () => {

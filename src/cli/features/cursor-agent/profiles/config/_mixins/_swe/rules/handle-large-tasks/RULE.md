@@ -6,7 +6,7 @@ alwaysApply: false
 **Prerequisites:** Read `{{rules_dir}}/using-subagents/RULE.md` to understand how to invoke subagents.
 
 <required>
-*CRITICAL* Add the following steps to your Todo list using TodoWrite:
+*CRITICAL* Add the following steps to your Todo list using `todo_write`:
 
 - Announce that you are creating subagents.
 - Construct a plan for each subagent.
