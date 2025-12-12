@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import * as apiModule from "@/api/index";
 import * as configModule from "@/cli/config";
+import * as pathModule from "@/utils/path";
 
 import { exportCursorChat, isEmptyTranscript } from "./cursor-chat-export";
 import * as extractorModule from "./cursor-chat-extractor";
@@ -13,6 +14,7 @@ import * as extractorModule from "./cursor-chat-extractor";
 // Mock dependencies
 vi.mock("@/cli/config");
 vi.mock("@/api/index");
+vi.mock("@/utils/path");
 vi.mock("./cursor-chat-extractor");
 
 describe("cursor-chat-export", () => {
@@ -85,6 +87,9 @@ describe("cursor-chat-export", () => {
       // Mock ConfigManager
       vi.mocked(apiModule.ConfigManager.isConfigured).mockReturnValue(true);
 
+      // Mock getInstallDirs
+      vi.mocked(pathModule.getInstallDirs).mockReturnValue([tmpDir]);
+
       // Mock loadConfig to return enabled state
       vi.mocked(configModule.loadConfig).mockResolvedValue({
         sendSessionTranscript: "enabled",
@@ -139,6 +144,9 @@ describe("cursor-chat-export", () => {
       // Mock ConfigManager
       vi.mocked(apiModule.ConfigManager.isConfigured).mockReturnValue(true);
 
+      // Mock getInstallDirs
+      vi.mocked(pathModule.getInstallDirs).mockReturnValue([tmpDir]);
+
       // Mock loadConfig to return disabled state
       vi.mocked(configModule.loadConfig).mockResolvedValue({
         sendSessionTranscript: "disabled",
@@ -187,6 +195,9 @@ describe("cursor-chat-export", () => {
       // Mock ConfigManager
       vi.mocked(apiModule.ConfigManager.isConfigured).mockReturnValue(true);
 
+      // Mock getInstallDirs
+      vi.mocked(pathModule.getInstallDirs).mockReturnValue([tmpDir]);
+
       // Mock loadConfig
       vi.mocked(configModule.loadConfig).mockResolvedValue({
         sendSessionTranscript: "enabled",
@@ -220,6 +231,9 @@ describe("cursor-chat-export", () => {
 
       // Mock ConfigManager
       vi.mocked(apiModule.ConfigManager.isConfigured).mockReturnValue(true);
+
+      // Mock getInstallDirs
+      vi.mocked(pathModule.getInstallDirs).mockReturnValue([tmpDir]);
 
       // Mock loadConfig
       vi.mocked(configModule.loadConfig).mockResolvedValue({
