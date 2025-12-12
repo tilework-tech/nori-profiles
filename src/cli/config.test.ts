@@ -90,6 +90,7 @@ describe("config with profile-based system", () => {
       expect(loaded?.auth).toEqual({
         username: "test@example.com",
         password: "password123",
+        refreshToken: null,
         organizationUrl: "https://example.com",
       });
       expect(loaded?.profile).toEqual({
@@ -111,6 +112,7 @@ describe("config with profile-based system", () => {
       expect(loaded?.auth).toEqual({
         username: "test@example.com",
         password: "password123",
+        refreshToken: null,
         organizationUrl: "https://example.com",
       });
       expect(loaded?.profile).toBeNull();
@@ -213,12 +215,12 @@ describe("config with profile-based system", () => {
       expect(loaded?.autoupdate).toBe("disabled");
     });
 
-    it("should default autoupdate to enabled when field is missing", async () => {
+    it("should default autoupdate to disabled when field is missing", async () => {
       await fs.writeFile(mockConfigPath, JSON.stringify({}));
 
       const loaded = await loadConfig({ installDir: tempDir });
 
-      expect(loaded?.autoupdate).toBe("enabled");
+      expect(loaded?.autoupdate).toBe("disabled");
     });
 
     it("should save and load autoupdate", async () => {
@@ -285,6 +287,7 @@ describe("config with profile-based system", () => {
       expect(loaded?.auth).toEqual({
         username: "custom@example.com",
         password: "custompass",
+        refreshToken: null,
         organizationUrl: "https://custom.com",
       });
     });
@@ -657,6 +660,173 @@ describe("agent-specific profiles", () => {
   });
 });
 
+describe("installedAgents", () => {
+  let tempDir: string;
+  let mockConfigPath: string;
+
+  beforeEach(async () => {
+    tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "config-installed-agents-test-"),
+    );
+    mockConfigPath = path.join(tempDir, ".nori-config.json");
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  describe("loadConfig with installedAgents", () => {
+    it("should load installedAgents when present and valid", async () => {
+      await fs.writeFile(
+        mockConfigPath,
+        JSON.stringify({
+          profile: { baseProfile: "senior-swe" },
+          installedAgents: ["claude-code"],
+        }),
+      );
+
+      const loaded = await loadConfig({ installDir: tempDir });
+
+      expect(loaded?.installedAgents).toEqual(["claude-code"]);
+    });
+
+    it("should load multiple installedAgents", async () => {
+      await fs.writeFile(
+        mockConfigPath,
+        JSON.stringify({
+          profile: { baseProfile: "senior-swe" },
+          installedAgents: ["claude-code", "cursor-agent"],
+        }),
+      );
+
+      const loaded = await loadConfig({ installDir: tempDir });
+
+      expect(loaded?.installedAgents).toEqual(["claude-code", "cursor-agent"]);
+    });
+
+    it("should return undefined installedAgents when field is missing", async () => {
+      await fs.writeFile(
+        mockConfigPath,
+        JSON.stringify({
+          profile: { baseProfile: "senior-swe" },
+        }),
+      );
+
+      const loaded = await loadConfig({ installDir: tempDir });
+
+      expect(loaded?.installedAgents).toBeUndefined();
+    });
+
+    it("should filter out non-string entries from installedAgents", async () => {
+      await fs.writeFile(
+        mockConfigPath,
+        JSON.stringify({
+          profile: { baseProfile: "senior-swe" },
+          installedAgents: ["claude-code", 123, null, "cursor-agent", {}],
+        }),
+      );
+
+      const loaded = await loadConfig({ installDir: tempDir });
+
+      expect(loaded?.installedAgents).toEqual(["claude-code", "cursor-agent"]);
+    });
+
+    it("should return undefined when installedAgents is not an array", async () => {
+      await fs.writeFile(
+        mockConfigPath,
+        JSON.stringify({
+          profile: { baseProfile: "senior-swe" },
+          installedAgents: "not-an-array",
+        }),
+      );
+
+      const loaded = await loadConfig({ installDir: tempDir });
+
+      expect(loaded?.installedAgents).toBeUndefined();
+    });
+
+    it("should return undefined when installedAgents array becomes empty after filtering", async () => {
+      await fs.writeFile(
+        mockConfigPath,
+        JSON.stringify({
+          profile: { baseProfile: "senior-swe" },
+          installedAgents: [123, null, {}],
+        }),
+      );
+
+      const loaded = await loadConfig({ installDir: tempDir });
+
+      expect(loaded?.installedAgents).toBeUndefined();
+    });
+  });
+
+  describe("saveConfig with installedAgents", () => {
+    it("should save installedAgents to config file", async () => {
+      await saveConfig({
+        username: null,
+        password: null,
+        organizationUrl: null,
+        profile: { baseProfile: "senior-swe" },
+        installedAgents: ["claude-code"],
+        installDir: tempDir,
+      });
+
+      const content = await fs.readFile(mockConfigPath, "utf-8");
+      const config = JSON.parse(content);
+
+      expect(config.installedAgents).toEqual(["claude-code"]);
+    });
+
+    it("should save multiple installedAgents", async () => {
+      await saveConfig({
+        username: null,
+        password: null,
+        organizationUrl: null,
+        profile: { baseProfile: "senior-swe" },
+        installedAgents: ["claude-code", "cursor-agent"],
+        installDir: tempDir,
+      });
+
+      const content = await fs.readFile(mockConfigPath, "utf-8");
+      const config = JSON.parse(content);
+
+      expect(config.installedAgents).toEqual(["claude-code", "cursor-agent"]);
+    });
+
+    it("should not save installedAgents when null", async () => {
+      await saveConfig({
+        username: null,
+        password: null,
+        organizationUrl: null,
+        profile: { baseProfile: "senior-swe" },
+        installedAgents: null,
+        installDir: tempDir,
+      });
+
+      const content = await fs.readFile(mockConfigPath, "utf-8");
+      const config = JSON.parse(content);
+
+      expect(config.installedAgents).toBeUndefined();
+    });
+
+    it("should not save installedAgents when empty array", async () => {
+      await saveConfig({
+        username: null,
+        password: null,
+        organizationUrl: null,
+        profile: { baseProfile: "senior-swe" },
+        installedAgents: [],
+        installDir: tempDir,
+      });
+
+      const content = await fs.readFile(mockConfigPath, "utf-8");
+      const config = JSON.parse(content);
+
+      expect(config.installedAgents).toBeUndefined();
+    });
+  });
+});
+
 describe("registryAuths", () => {
   let tempDir: string;
   let mockConfigPath: string;
@@ -961,6 +1131,137 @@ describe("registryAuths", () => {
 
       expect(auth).not.toBeNull();
       expect(auth?.username).toBe("test@example.com");
+    });
+  });
+});
+
+describe("token-based auth", () => {
+  let tempDir: string;
+  let mockConfigPath: string;
+
+  beforeEach(async () => {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "config-token-test-"));
+    mockConfigPath = path.join(tempDir, ".nori-config.json");
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  describe("saveConfig with refreshToken", () => {
+    it("should save refreshToken instead of password", async () => {
+      await saveConfig({
+        username: "test@example.com",
+        password: null,
+        organizationUrl: "https://example.com",
+        refreshToken: "firebase-refresh-token-123",
+        installDir: tempDir,
+      });
+
+      const content = await fs.readFile(mockConfigPath, "utf-8");
+      const config = JSON.parse(content);
+
+      expect(config.refreshToken).toBe("firebase-refresh-token-123");
+      expect(config.username).toBe("test@example.com");
+      expect(config.password).toBeUndefined();
+    });
+
+    it("should not save password when refreshToken is provided", async () => {
+      await saveConfig({
+        username: "test@example.com",
+        password: "should-be-ignored",
+        organizationUrl: "https://example.com",
+        refreshToken: "firebase-refresh-token-123",
+        installDir: tempDir,
+      });
+
+      const content = await fs.readFile(mockConfigPath, "utf-8");
+      const config = JSON.parse(content);
+
+      expect(config.refreshToken).toBe("firebase-refresh-token-123");
+      expect(config.password).toBeUndefined();
+    });
+  });
+
+  describe("loadConfig with refreshToken", () => {
+    it("should load refreshToken from config", async () => {
+      await fs.writeFile(
+        mockConfigPath,
+        JSON.stringify({
+          username: "test@example.com",
+          refreshToken: "stored-refresh-token",
+          organizationUrl: "https://example.com",
+        }),
+      );
+
+      const loaded = await loadConfig({ installDir: tempDir });
+
+      expect(loaded?.auth?.refreshToken).toBe("stored-refresh-token");
+      expect(loaded?.auth?.username).toBe("test@example.com");
+    });
+
+    it("should detect legacy config with password but no refreshToken", async () => {
+      const { isLegacyPasswordConfig } = await import("./config.js");
+
+      await fs.writeFile(
+        mockConfigPath,
+        JSON.stringify({
+          username: "test@example.com",
+          password: "old-password",
+          organizationUrl: "https://example.com",
+        }),
+      );
+
+      const loaded = await loadConfig({ installDir: tempDir });
+      const isLegacy = isLegacyPasswordConfig({ config: loaded! });
+
+      expect(isLegacy).toBe(true);
+    });
+
+    it("should not detect token-based config as legacy", async () => {
+      const { isLegacyPasswordConfig } = await import("./config.js");
+
+      await fs.writeFile(
+        mockConfigPath,
+        JSON.stringify({
+          username: "test@example.com",
+          refreshToken: "new-token",
+          organizationUrl: "https://example.com",
+        }),
+      );
+
+      const loaded = await loadConfig({ installDir: tempDir });
+      const isLegacy = isLegacyPasswordConfig({ config: loaded! });
+
+      expect(isLegacy).toBe(false);
+    });
+  });
+
+  describe("isPaidInstall with token-based auth", () => {
+    it("should return true when config has auth with refreshToken", () => {
+      const config: Config = {
+        auth: {
+          username: "test@example.com",
+          refreshToken: "firebase-refresh-token",
+          organizationUrl: "https://example.com",
+        },
+        installDir: "/test/dir",
+      };
+
+      expect(isPaidInstall({ config })).toBe(true);
+    });
+
+    it("should return true for legacy password-based auth", () => {
+      const config: Config = {
+        auth: {
+          username: "test@example.com",
+          password: "password123",
+          organizationUrl: "https://example.com",
+        },
+        installDir: "/test/dir",
+      };
+
+      expect(isPaidInstall({ config })).toBe(true);
     });
   });
 });

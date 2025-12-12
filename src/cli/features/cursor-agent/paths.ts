@@ -3,6 +3,7 @@
  * All cursor-specific paths are defined here
  */
 
+import * as os from "os";
 import * as path from "path";
 
 /**
@@ -80,4 +81,49 @@ export const getCursorHooksFile = (args: { installDir: string }): string => {
 export const getCursorCommandsDir = (args: { installDir: string }): string => {
   const { installDir } = args;
   return path.join(getCursorDir({ installDir }), "commands");
+};
+
+/**
+ * Get the subagents directory path for Cursor
+ * @param args - Configuration arguments
+ * @param args.installDir - Installation directory
+ *
+ * @returns Path to the subagents directory
+ */
+export const getCursorSubagentsDir = (args: { installDir: string }): string => {
+  const { installDir } = args;
+  return path.join(getCursorDir({ installDir }), "subagents");
+};
+
+/**
+ * Get the Cursor home directory path (always ~/.cursor)
+ * This is where Cursor looks for user-level settings,
+ * regardless of where Nori is installed.
+ *
+ * @returns Absolute path to ~/.cursor
+ */
+export const getCursorHomeDir = (): string => {
+  return path.join(os.homedir(), ".cursor");
+};
+
+/**
+ * Get the Cursor home hooks file path (always ~/.cursor/hooks.json)
+ * This is where hooks configuration should be written
+ * to ensure Cursor picks them up from any subdirectory.
+ *
+ * @returns Absolute path to ~/.cursor/hooks.json
+ */
+export const getCursorHomeHooksFile = (): string => {
+  return path.join(getCursorHomeDir(), "hooks.json");
+};
+
+/**
+ * Get the Cursor home commands directory path (always ~/.cursor/commands)
+ * This is where global slash commands should be installed
+ * to ensure Cursor picks them up from any subdirectory.
+ *
+ * @returns Absolute path to ~/.cursor/commands
+ */
+export const getCursorHomeCommandsDir = (): string => {
+  return path.join(getCursorHomeDir(), "commands");
 };

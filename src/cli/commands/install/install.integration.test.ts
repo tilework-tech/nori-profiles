@@ -10,6 +10,7 @@ import { getConfigPath } from "@/cli/config.js";
 import { getInstalledVersion } from "@/cli/version.js";
 
 import type * as childProcess from "child_process";
+import type * as firebaseAuth from "firebase/auth";
 
 import { main as installMain } from "./install.js";
 
@@ -64,6 +65,7 @@ vi.mock("@/cli/features/claude-code/paths.js", () => {
       `${testClaudeDir}/settings.json`,
     getClaudeHomeDir: () => testClaudeDir,
     getClaudeHomeSettingsFile: () => `${testClaudeDir}/settings.json`,
+    getClaudeHomeCommandsDir: () => `${testClaudeDir}/commands`,
     getClaudeAgentsDir: (_args: { installDir: string }) =>
       `${testClaudeDir}/agents`,
     getClaudeCommandsDir: (_args: { installDir: string }) =>
@@ -89,6 +91,28 @@ vi.mock("@/cli/env.js", () => {
 vi.mock("@/cli/analytics.js", () => ({
   initializeAnalytics: vi.fn(),
   trackEvent: vi.fn(),
+}));
+
+// Mock Firebase SDK to avoid hitting real Firebase API
+vi.mock("firebase/auth", async (importOriginal) => {
+  const actual = (await importOriginal()) as typeof firebaseAuth;
+  return {
+    ...actual,
+    signInWithEmailAndPassword: vi.fn().mockResolvedValue({
+      user: {
+        refreshToken: "mock-refresh-token",
+      },
+    }),
+  };
+});
+
+// Mock Firebase provider
+vi.mock("@/providers/firebase.js", () => ({
+  configureFirebase: vi.fn(),
+  getFirebase: vi.fn().mockReturnValue({
+    auth: {},
+    app: { options: { projectId: "test-project" } },
+  }),
 }));
 
 describe("install integration test", () => {
@@ -458,6 +482,41 @@ describe("install integration test", () => {
     // Cwd directory should be back to pre-install state
     // (no config file, no version file, no notifications log)
     expect(postUninstallCwdSnapshot).toEqual(preInstallCwdSnapshot);
+  });
+
+  it("should include installedAgents in config after installation", async () => {
+    const CONFIG_PATH = getConfigPath({ installDir: tempDir });
+
+    // STEP 1: Run installation in non-interactive mode
+    await installMain({ nonInteractive: true, installDir: tempDir });
+
+    // STEP 2: Verify installedAgents is set in the config
+    const config = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
+    expect(config.installedAgents).toEqual(["claude-code"]);
+  });
+
+  it("should accumulate installedAgents when installing multiple agents", async () => {
+    const CONFIG_PATH = getConfigPath({ installDir: tempDir });
+
+    // STEP 1: Create existing config with one agent
+    fs.writeFileSync(
+      CONFIG_PATH,
+      JSON.stringify({
+        profile: { baseProfile: "senior-swe" },
+        installedAgents: ["cursor-agent"],
+        installDir: tempDir,
+      }),
+    );
+
+    // STEP 2: Install claude-code (default agent)
+    await installMain({ nonInteractive: true, installDir: tempDir });
+
+    // STEP 3: Verify both agents are in installedAgents
+    const config = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
+    expect(config.installedAgents).toEqual(
+      expect.arrayContaining(["cursor-agent", "claude-code"]),
+    );
+    expect(config.installedAgents).toHaveLength(2);
   });
 
   it("should warn when ancestor directory has nori installation", async () => {

@@ -37,6 +37,7 @@ import {
 } from "@/cli/logger.js";
 import { promptUser } from "@/cli/prompt.js";
 import {
+  buildUninstallCommand,
   getCurrentPackageVersion,
   getInstalledVersion,
   saveInstalledVersion,
@@ -90,7 +91,7 @@ const getAvailableProfiles = async (args: {
  * @param args - Configuration arguments
  * @param args.installDir - Installation directory
  * @param args.existingConfig - Existing configuration (if any)
- * @param args.agent - AI agent implementation
+ * @param args.agent - AI agent implementation (agent.name is used as the UID)
  *
  * @returns Runtime configuration, or null if user cancels
  */
@@ -129,6 +130,7 @@ export const generatePromptConfig = async (args: {
         ...existingConfig,
         profile: existingConfig.profile ?? getDefaultProfile(),
         installDir,
+        installedAgents: [agent.name],
       };
     }
 
@@ -247,6 +249,7 @@ export const generatePromptConfig = async (args: {
     },
     installDir,
     registryAuths: registryAuths ?? null,
+    installedAgents: [agent.name],
   };
 };
 
@@ -266,7 +269,9 @@ export const interactive = async (args?: {
 }): Promise<void> => {
   const { skipUninstall, installDir, agent } = args || {};
   const normalizedInstallDir = normalizeInstallDir({ installDir });
-  const agentName = agent ?? "claude-code";
+  const agentImpl = AgentRegistry.getInstance().get({
+    name: agent ?? "claude-code",
+  });
 
   // Check for ancestor installations that might cause conflicts
   const allInstallations = getInstallDirs({
@@ -326,12 +331,12 @@ export const interactive = async (args?: {
     });
 
     try {
-      execSync(
-        `nori-ai uninstall --non-interactive --install-dir="${normalizedInstallDir}" --agent="${agentName}"`,
-        {
-          stdio: "inherit",
-        },
-      );
+      const uninstallCmd = buildUninstallCommand({
+        installDir: normalizedInstallDir,
+        agentName: agentImpl.name,
+        installedVersion: previousVersion,
+      });
+      execSync(uninstallCmd, { stdio: "inherit" });
     } catch (err: any) {
       info({
         message: `Note: Uninstall at v${previousVersion} failed (may not exist). Continuing with installation...`,
@@ -344,9 +349,6 @@ export const interactive = async (args?: {
   } else {
     info({ message: "First-time installation detected. No cleanup needed." });
   }
-
-  // Get the agent implementation
-  const agentImpl = AgentRegistry.getInstance().get({ name: agentName });
 
   // Display banner
   displayNoriBanner();
@@ -464,7 +466,9 @@ export const noninteractive = async (args?: {
 }): Promise<void> => {
   const { skipUninstall, installDir, agent } = args || {};
   const normalizedInstallDir = normalizeInstallDir({ installDir });
-  const agentName = agent ?? "claude-code";
+  const agentImpl = AgentRegistry.getInstance().get({
+    name: agent ?? "claude-code",
+  });
 
   // Check for ancestor installations (warn but continue)
   const allInstallations = getInstallDirs({
@@ -518,12 +522,12 @@ export const noninteractive = async (args?: {
     });
 
     try {
-      execSync(
-        `nori-ai uninstall --non-interactive --install-dir="${normalizedInstallDir}" --agent="${agentName}"`,
-        {
-          stdio: "inherit",
-        },
-      );
+      const uninstallCmd = buildUninstallCommand({
+        installDir: normalizedInstallDir,
+        agentName: agentImpl.name,
+        installedVersion: previousVersion,
+      });
+      execSync(uninstallCmd, { stdio: "inherit" });
     } catch (err: any) {
       info({
         message: `Note: Uninstall at v${previousVersion} failed (may not exist). Continuing with installation...`,
@@ -542,10 +546,16 @@ export const noninteractive = async (args?: {
     installDir: normalizedInstallDir,
   });
 
-  const config: Config = existingConfig ?? {
-    profile: getDefaultProfile(),
-    installDir: normalizedInstallDir,
-  };
+  const config: Config = existingConfig
+    ? {
+        ...existingConfig,
+        installedAgents: [agentImpl.name],
+      }
+    : {
+        profile: getDefaultProfile(),
+        installDir: normalizedInstallDir,
+        installedAgents: [agentImpl.name],
+      };
 
   // Track installation start
   trackEvent({
@@ -567,7 +577,6 @@ export const noninteractive = async (args?: {
   }
 
   // Run all loaders
-  const agentImpl = AgentRegistry.getInstance().get({ name: agentName });
   const registry = agentImpl.getLoaderRegistry();
   const loaders = registry.getAll();
 

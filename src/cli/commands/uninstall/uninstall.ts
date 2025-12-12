@@ -30,19 +30,44 @@ import type { Command } from "commander";
 export type PromptConfig = {
   installDir: string;
   removeGlobalSettings: boolean;
+  selectedAgent: string;
+};
+
+/**
+ * Format an array of feature names into a human-readable string
+ * @param features - Array of feature names
+ *
+ * @returns A comma-separated string with "and" before the last item
+ */
+const formatFeatureList = (features: Array<string>): string => {
+  if (features.length === 0) {
+    return "";
+  }
+  if (features.length === 1) {
+    return features[0];
+  }
+  if (features.length === 2) {
+    return `${features[0]} and ${features[1]}`;
+  }
+  const allButLast = features.slice(0, -1).join(", ");
+  const last = features[features.length - 1];
+  return `${allButLast}, and ${last}`;
 };
 
 /**
  * Prompt user for confirmation before uninstalling
  * @param args - Configuration arguments
  * @param args.installDir - Installation directory
+ * @param args.agent - Agent name (optional, will prompt if multiple agents installed)
  *
  * @returns The prompt configuration if user confirms, null to exit
  */
 export const generatePromptConfig = async (args: {
   installDir: string;
+  agent?: string | null;
 }): Promise<PromptConfig | null> => {
   let { installDir } = args;
+  const { agent } = args;
 
   // Get all installations (current + ancestors)
   const allInstallations = getInstallDirs({ currentDir: installDir });
@@ -116,6 +141,7 @@ export const generatePromptConfig = async (args: {
   }
 
   info({ message: "Nori Profiles Uninstaller" });
+  info({ message: `Uninstalling from: ${installDir}` });
   console.log();
   warn({
     message: "This will remove Nori Profiles features from your system.",
@@ -125,31 +151,70 @@ export const generatePromptConfig = async (args: {
   // Check for existing configuration
   const existingConfig = await loadConfig({ installDir });
 
+  // Determine which agent to uninstall
+  let selectedAgent = agent ?? "claude-code";
+  const installedAgents = existingConfig?.installedAgents ?? [];
+
+  if (installedAgents.length > 0) {
+    info({
+      message: `Installed agents at this location: ${installedAgents.join(", ")}`,
+    });
+    console.log();
+
+    // If no agent specified and multiple agents are installed, prompt user
+    if (agent == null && installedAgents.length > 1) {
+      info({
+        message: "Multiple agents are installed. Select which to uninstall:",
+      });
+      for (let i = 0; i < installedAgents.length; i++) {
+        info({ message: `  ${i + 1}. ${installedAgents[i]}` });
+      }
+      console.log();
+
+      const selection = await promptUser({
+        prompt: `Select agent to uninstall (1-${installedAgents.length}), or 'n' to cancel: `,
+      });
+
+      if (selection.match(/^[Nn]$/)) {
+        info({ message: "Uninstallation cancelled." });
+        return null;
+      }
+
+      const selectedIndex = parseInt(selection, 10) - 1;
+      if (
+        isNaN(selectedIndex) ||
+        selectedIndex < 0 ||
+        selectedIndex >= installedAgents.length
+      ) {
+        info({ message: "Invalid selection. Uninstallation cancelled." });
+        return null;
+      }
+
+      selectedAgent = installedAgents[selectedIndex];
+    } else if (agent == null && installedAgents.length === 1) {
+      // Single agent installed, use it
+      selectedAgent = installedAgents[0];
+    }
+  }
+
   if (existingConfig?.auth) {
-    info({ message: "Found existing Nori configuration:" });
+    info({ message: "Found paid mode configuration:" });
     info({ message: `  Username: ${existingConfig.auth.username}` });
     info({
       message: `  Organization URL: ${existingConfig.auth.organizationUrl}`,
     });
     console.log();
-  } else {
-    info({
-      message:
-        "No existing configuration found. Will uninstall free mode features.",
-    });
-    console.log();
   }
 
+  // Get the agent's loaders to show what will be removed
+  const agentImpl = AgentRegistry.getInstance().get({ name: selectedAgent });
+  const registry = agentImpl.getLoaderRegistry();
+  const loaders = registry.getAll();
+
   info({ message: "The following will be removed:" });
-  if (existingConfig?.auth) {
-    info({ message: "  - nori-knowledge-researcher subagent" });
-    info({ message: "  - Automatic memorization hooks" });
+  for (const loader of loaders) {
+    info({ message: `  - ${loader.description}` });
   }
-  info({ message: "  - Desktop notification hook" });
-  info({ message: "  - Skills and profiles" });
-  info({ message: "  - Slash commands" });
-  info({ message: "  - CLAUDE.md (with confirmation)" });
-  info({ message: "  - Nori configuration file" });
   console.log();
 
   const proceed = await promptUser({
@@ -163,10 +228,20 @@ export const generatePromptConfig = async (args: {
 
   console.log();
 
-  // Ask if user wants to remove global settings (hooks, statusline, and global slashcommands) from ~/.claude
+  // Get the agent's global loaders (reusing agentImpl from above)
+  const globalLoaders = agentImpl.getGlobalLoaders();
+
+  // If agent has no global features, skip the prompt
+  if (globalLoaders.length === 0) {
+    return { installDir, removeGlobalSettings: false, selectedAgent };
+  }
+
+  // Ask if user wants to remove global settings
+  const featureList = formatFeatureList(
+    globalLoaders.map((l) => l.humanReadableName),
+  );
   warn({
-    message:
-      "Hooks, statusline, and global slash commands are installed in ~/.claude/ and are shared across all Nori installations.",
+    message: `Global settings (${featureList}) are shared across all Nori installations.`,
   });
   info({
     message: "If you have other Nori installations, you may want to keep them.",
@@ -174,15 +249,14 @@ export const generatePromptConfig = async (args: {
   console.log();
 
   const removeGlobal = await promptUser({
-    prompt:
-      "Do you want to remove hooks, statusline, and global slash commands from ~/.claude/? (y/n): ",
+    prompt: `Do you want to remove ${featureList}? (y/n): `,
   });
 
   const removeGlobalSettings = removeGlobal.match(/^[Yy]$/) ? true : false;
 
   console.log();
 
-  return { installDir, removeGlobalSettings };
+  return { installDir, removeGlobalSettings, selectedAgent };
 };
 
 /**
@@ -272,6 +346,9 @@ export const runUninstall = async (args: {
     installDir,
   };
 
+  // Set the agent being uninstalled so config loader knows what to remove
+  config.installedAgents = [agentName];
+
   // Log installed version for debugging
   if (installedVersion) {
     info({ message: `Uninstalling version: ${installedVersion}` });
@@ -293,18 +370,16 @@ export const runUninstall = async (args: {
   const registry = agentImpl.getLoaderRegistry();
   const loaders = registry.getAllReversed();
 
+  // Get the loader names for global features from the agent
+  const globalLoaderNames = agentImpl.getGlobalLoaders().map((l) => l.name);
+
   // Execute uninstallers sequentially to avoid race conditions
   // (hooks and statusline both read/write settings.json)
   for (const loader of loaders) {
-    // Skip hooks, statusline, and slashcommands loaders if removeGlobalSettings is false
-    if (
-      !removeGlobalSettings &&
-      (loader.name === "hooks" ||
-        loader.name === "statusline" ||
-        loader.name === "slashcommands")
-    ) {
+    // Skip global feature loaders if removeGlobalSettings is false
+    if (!removeGlobalSettings && globalLoaderNames.includes(loader.name)) {
       info({
-        message: `Skipping ${loader.name} uninstall (preserving ~/.claude/)`,
+        message: `Skipping ${loader.name} uninstall (preserving global settings)`,
       });
       continue;
     }
@@ -357,21 +432,24 @@ export const interactive = async (args?: {
   agent?: string | null;
 }): Promise<void> => {
   const installDir = normalizeInstallDir({ installDir: args?.installDir });
-  const agentName = args?.agent ?? "claude-code";
 
-  // Prompt for confirmation and configuration
-  const result = await generatePromptConfig({ installDir });
+  // Prompt for confirmation and configuration (including agent selection)
+  const result = await generatePromptConfig({ installDir, agent: args?.agent });
 
   if (result == null) {
     process.exit(0);
   }
+
+  // Show directory being uninstalled from
+  info({ message: `Uninstalling from: ${result.installDir}` });
+  console.log();
 
   // Run uninstall with user's choices
   await runUninstall({
     removeConfig: true,
     removeGlobalSettings: result.removeGlobalSettings,
     installDir: result.installDir,
-    agent: agentName,
+    agent: result.selectedAgent,
   });
 
   // Display completion message
@@ -389,6 +467,7 @@ export const interactive = async (args?: {
   });
   console.log();
 
+  info({ message: `Uninstalled from: ${result.installDir}` });
   info({ message: "All features have been removed." });
   console.log();
   warn({
@@ -413,7 +492,24 @@ export const noninteractive = async (args?: {
   agent?: string | null;
 }): Promise<void> => {
   const installDir = normalizeInstallDir({ installDir: args?.installDir });
-  const agentName = args?.agent ?? "claude-code";
+
+  // Detect agent from config if not explicitly specified
+  let agentName = args?.agent ?? null;
+  if (agentName == null) {
+    const existingConfig = await loadConfig({ installDir });
+    const installedAgents = existingConfig?.installedAgents ?? [];
+    if (installedAgents.length === 1) {
+      // Single agent installed - use it
+      agentName = installedAgents[0];
+    } else {
+      // No agents or multiple agents - default to claude-code
+      agentName = "claude-code";
+    }
+  }
+
+  // Show directory being uninstalled from
+  info({ message: `Uninstalling from: ${installDir}` });
+  console.log();
 
   // Run uninstall, preserving config and global settings (hooks/statusline/slashcommands)
   await runUninstall({
@@ -438,6 +534,7 @@ export const noninteractive = async (args?: {
   });
   console.log();
 
+  info({ message: `Uninstalled from: ${installDir}` });
   info({ message: "All features have been removed." });
   console.log();
   warn({

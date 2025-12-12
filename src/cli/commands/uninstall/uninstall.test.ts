@@ -9,6 +9,10 @@ import * as path from "path";
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
+import { promptUser } from "@/cli/prompt.js";
+
+import type { AgentName } from "@/cli/features/agentRegistry.js";
+
 // Mock modules - initialize with temp values
 let mockClaudeDir = "/tmp/test-claude";
 let mockConfigPath = "/tmp/test-config.json";
@@ -94,9 +98,13 @@ vi.mock("@/cli/features/claude-code/loaderRegistry.js", () => ({
 }));
 
 // Import after mocking
-import { promptUser } from "@/cli/prompt.js";
 
-import { runUninstall, main, type PromptConfig } from "./uninstall.js";
+import {
+  runUninstall,
+  main,
+  noninteractive,
+  type PromptConfig,
+} from "./uninstall.js";
 
 vi.mock("@/cli/prompt.js", () => ({
   promptUser: vi.fn(),
@@ -401,11 +409,123 @@ describe("uninstall idempotency", () => {
     const config: PromptConfig = {
       installDir: tempDir,
       removeGlobalSettings: true,
+      selectedAgent: "claude-code",
     };
 
     // Verify the field exists on the type
     expect(config.removeGlobalSettings).toBe(true);
     expect(config.installDir).toBe(tempDir);
+    expect(config.selectedAgent).toBe("claude-code");
+  });
+});
+
+describe("uninstall prompt with agent-specific global features", () => {
+  let tempDir: string;
+  let originalHome: string | undefined;
+  let processExitSpy: any;
+
+  beforeEach(async () => {
+    originalHome = process.env.HOME;
+    tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "uninstall-global-features-"),
+    );
+    process.env.HOME = tempDir;
+
+    processExitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      // Intentionally empty
+    }) as any);
+
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    processExitSpy.mockRestore();
+    if (originalHome !== undefined) {
+      process.env.HOME = originalHome;
+    } else {
+      delete process.env.HOME;
+    }
+    await fs.rm(tempDir, { recursive: true, force: true });
+    vi.clearAllMocks();
+  });
+
+  it("should skip global settings prompt when agent has no global features", async () => {
+    // Create a Nori installation
+    const configPath = path.join(tempDir, ".nori-config.json");
+    await fs.writeFile(configPath, JSON.stringify({}));
+
+    // Mock a hypothetical agent with no global features
+    // We need to mock the AgentRegistry to return an agent with empty getGlobalFeatureNames
+    const { AgentRegistry } = await import("@/cli/features/agentRegistry.js");
+    const mockAgent = {
+      name: "mock-agent" as AgentName, // Cast for test mock
+      displayName: "Mock Agent",
+      getLoaderRegistry: () => ({
+        getAll: () => [],
+        getAllReversed: () => [],
+      }),
+      listProfiles: async () => [],
+      listSourceProfiles: async () => [],
+      switchProfile: async () => {
+        // Mock implementation - intentionally empty
+      },
+      getGlobalLoaders: () => [], // Empty - no global features
+    };
+
+    const originalGet = AgentRegistry.getInstance().get.bind(
+      AgentRegistry.getInstance(),
+    );
+    vi.spyOn(AgentRegistry.getInstance(), "get").mockImplementation((args) => {
+      if (args.name === "mock-agent") {
+        return mockAgent;
+      }
+      return originalGet(args);
+    });
+
+    // Mock user confirming uninstall (but should NOT be asked about global settings)
+    (promptUser as any).mockResolvedValueOnce("y"); // Confirm uninstall only
+
+    // Run uninstall with mock agent
+    await main({
+      nonInteractive: false,
+      installDir: tempDir,
+      agent: "mock-agent",
+    });
+
+    // Should only be called once (uninstall confirmation), NOT for global settings
+    expect(promptUser).toHaveBeenCalledTimes(1);
+
+    // The prompt should NOT contain "hooks" or "statusline" or "slash commands"
+    const callArgs = (promptUser as any).mock.calls[0][0];
+    expect(callArgs.prompt).not.toMatch(/hooks/i);
+    expect(callArgs.prompt).not.toMatch(/statusline/i);
+    expect(callArgs.prompt).not.toMatch(/slash commands/i);
+  });
+
+  it("should show agent-specific feature names in global settings prompt", async () => {
+    // Create a Nori installation
+    const configPath = path.join(tempDir, ".nori-config.json");
+    await fs.writeFile(configPath, JSON.stringify({}));
+
+    // Mock prompts: confirm uninstall, then confirm global settings removal
+    (promptUser as any).mockResolvedValueOnce("y"); // Confirm uninstall
+    (promptUser as any).mockResolvedValueOnce("y"); // Remove global settings
+
+    // Run uninstall with cursor-agent (which has hooks and slash commands, but no statusline)
+    await main({
+      nonInteractive: false,
+      installDir: tempDir,
+      agent: "cursor-agent",
+    });
+
+    // Should be called twice (uninstall confirmation, global settings)
+    expect(promptUser).toHaveBeenCalledTimes(2);
+
+    // The global settings prompt should mention hooks and slash commands but NOT statusline
+    const globalPromptArgs = (promptUser as any).mock.calls[1][0];
+    expect(globalPromptArgs.prompt).toMatch(/hooks/i);
+    expect(globalPromptArgs.prompt).toMatch(/slash commands/i);
+    expect(globalPromptArgs.prompt).not.toMatch(/statusline/i);
   });
 });
 
@@ -598,5 +718,104 @@ describe("uninstall with ancestor directory detection", () => {
 
     // Verify only one prompt (cancelled after invalid selection)
     expect(promptUser).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("uninstall agent detection from config", () => {
+  let tempDir: string;
+  let originalHome: string | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let agentRegistryGetSpy: any;
+
+  beforeEach(async () => {
+    originalHome = process.env.HOME;
+    tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "uninstall-agent-detection-"),
+    );
+    process.env.HOME = tempDir;
+
+    // Set mock paths
+    mockClaudeDir = path.join(tempDir, ".claude");
+    mockConfigPath = path.join(tempDir, ".nori-config.json");
+
+    // Spy on AgentRegistry to see which agent is being used
+    const { AgentRegistry } = await import("@/cli/features/agentRegistry.js");
+    agentRegistryGetSpy = vi.spyOn(AgentRegistry.getInstance(), "get");
+
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    if (originalHome !== undefined) {
+      process.env.HOME = originalHome;
+    } else {
+      delete process.env.HOME;
+    }
+    await fs.rm(tempDir, { recursive: true, force: true });
+    agentRegistryGetSpy?.mockRestore();
+    vi.clearAllMocks();
+  });
+
+  it("should detect cursor-agent from config in non-interactive mode", async () => {
+    // Create config with cursor-agent installed
+    mockLoadedConfig = {
+      installedAgents: ["cursor-agent"],
+      installDir: tempDir,
+    };
+    await fs.writeFile(
+      mockConfigPath,
+      JSON.stringify({ installedAgents: ["cursor-agent"] }),
+    );
+
+    // Run non-interactive uninstall WITHOUT --agent flag
+    await noninteractive({ installDir: tempDir });
+
+    // Verify that cursor-agent was used (not claude-code)
+    // The AgentRegistry.get() should have been called with cursor-agent
+    expect(agentRegistryGetSpy).toHaveBeenCalledWith({ name: "cursor-agent" });
+  });
+
+  it("should default to claude-code when no installedAgents in config", async () => {
+    // Create config without installedAgents
+    mockLoadedConfig = {
+      installDir: tempDir,
+    };
+    await fs.writeFile(mockConfigPath, JSON.stringify({}));
+
+    // Run non-interactive uninstall WITHOUT --agent flag
+    await noninteractive({ installDir: tempDir });
+
+    // Should use claude-code by default
+    expect(agentRegistryGetSpy).toHaveBeenCalledWith({ name: "claude-code" });
+  });
+
+  it("should default to claude-code when config doesn't exist", async () => {
+    // No config file
+    mockLoadedConfig = null;
+
+    // Run non-interactive uninstall WITHOUT --agent flag
+    await noninteractive({ installDir: tempDir });
+
+    // Should use claude-code by default
+    expect(agentRegistryGetSpy).toHaveBeenCalledWith({ name: "claude-code" });
+  });
+
+  it("should default to claude-code when multiple agents are installed", async () => {
+    // Create config with multiple agents installed
+    mockLoadedConfig = {
+      installedAgents: ["claude-code", "cursor-agent"],
+      installDir: tempDir,
+    };
+    await fs.writeFile(
+      mockConfigPath,
+      JSON.stringify({ installedAgents: ["claude-code", "cursor-agent"] }),
+    );
+
+    // Run non-interactive uninstall WITHOUT --agent flag
+    await noninteractive({ installDir: tempDir });
+
+    // Should default to claude-code when there are multiple agents
+    // (can't auto-detect which one to uninstall)
+    expect(agentRegistryGetSpy).toHaveBeenCalledWith({ name: "claude-code" });
   });
 });

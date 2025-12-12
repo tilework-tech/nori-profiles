@@ -23,7 +23,7 @@ CLI Commands (install, uninstall, check, switch-profile)
 
 Shared Resources (@/src/cli/features/)
     |
-    +-- agentRegistry.ts: Agent, Loader, ValidationResult, LoaderRegistry types
+    +-- agentRegistry.ts: AgentName, Agent, Loader, ValidationResult, LoaderRegistry types
     +-- config/loader.ts: configLoader (shared across all agents)
 ```
 
@@ -35,17 +35,20 @@ The `--agent` global CLI option (default: "claude-code") determines which agent 
 
 | Type | Purpose |
 |------|---------|
+| `AgentName` | Type alias for canonical agent identifiers (`"claude-code" \| "cursor-agent"`). Used as the registry key and source of truth for agent identity. |
 | `Loader` | Interface for feature installation with `run()`, `uninstall()`, and optional `validate()` methods |
 | `ValidationResult` | Result type for loader validation checks (`valid`, `message`, `errors`) |
 | `LoaderRegistry` | Interface that agent-specific registry classes must implement (`getAll()`, `getAllReversed()`) |
 
 **Agent Interface** (agentRegistry.ts):
-- `name`: Unique identifier (e.g., "claude-code")
+- `name`: `AgentName` - canonical identifier used as the registry key (e.g., "claude-code")
 - `displayName`: Human-readable name (e.g., "Claude Code")
 - `getLoaderRegistry()`: Returns an object implementing the `LoaderRegistry` interface
 - `listProfiles({ installDir })`: Returns array of installed profile names from `~/.{agent}/profiles/`
 - `listSourceProfiles()`: Returns array of `SourceProfile` objects from the package's source directory (for install UI profile selection)
 - `switchProfile({ installDir, profileName })`: Validates profile exists and updates config
+- `getGlobalFeatureNames()`: Returns human-readable names of features installed to the user's home directory for display in prompts (e.g., `["hooks", "statusline", "global slash commands"]` for claude-code)
+- `getGlobalLoaderNames()`: Returns loader names for global features, used by uninstall to skip loaders when preserving global settings (e.g., `["hooks", "statusline", "slashcommands"]` for claude-code)
 
 **SourceProfile Type** (agentRegistry.ts):
 - `name`: Profile identifier (e.g., "senior-swe")
@@ -60,16 +63,22 @@ The `--agent` global CLI option (default: "claude-code") determines which agent 
 **Config Loader** (config/loader.ts):
 - Shared loader that manages the `.nori-config.json` file lifecycle
 - All agents MUST include this loader in their registry
-- Handles saving/removing config with auth credentials, profile selection, and user preferences
+- Handles saving/removing config with auth credentials, profile selection, user preferences, and installedAgents tracking
+- During install: Merges and deduplicates `installedAgents` from existing and new config
+- During uninstall: Removes the uninstalled agent from `installedAgents`. Deletes config file if no agents remain; updates config with remaining agents otherwise
 
 ### Things to Know
+
+**`AgentName` is the canonical UID for agents.** The `AgentName` type (`"claude-code" | "cursor-agent"`) is the source of truth for valid agent identifiers. `Agent.name` is typed as `AgentName`, which ensures type safety. CLI entry points parse the `--agent` option string, look up the `Agent` object once via `AgentRegistry.get({ name })`, then pass the `Agent` object around. Functions that need the agent identifier access `agent.name` rather than receiving a separate string parameter. This pattern makes it impossible for the agent name and agent object to get out of sync.
 
 **Critical: All agents must include the config loader.** The `configLoader` from @/src/cli/features/config/loader.ts manages the shared `.nori-config.json` file. Each agent's LoaderRegistry class must register this loader to ensure proper config file creation during install and removal during uninstall.
 
 The AgentRegistry auto-registers all agents in its constructor. Currently claude-code and cursor-agent are registered. Adding new agents follows this pattern:
 1. Create a new directory (e.g., `new-agent/`) with an agent implementation satisfying the Agent interface
 2. Create a LoaderRegistry class implementing the `LoaderRegistry` interface, including the shared `configLoader`
-3. Import and register it in AgentRegistry's constructor
+3. Implement `getGlobalFeatureNames()` to declare which features are installed globally (for display in prompts)
+4. Implement `getGlobalLoaderNames()` to declare which loaders correspond to global features (for uninstall skipping)
+5. Import and register it in AgentRegistry's constructor
 
 Commands that use loaders should obtain them via the agent rather than importing LoaderRegistry directly. This ensures the correct agent's loaders are used when `--agent` is specified.
 

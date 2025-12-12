@@ -57,3 +57,4 @@ If you cannot find the source of the bug, STOP. Compile everything you have lear
 - `{{skills_dir}}/testing-anti-patterns/SKILL.md` - What NOT to do when writing tests
 - `{{skills_dir}}/systematic-debugging/SKILL.md` - Four-phase debugging framework
 - `{{skills_dir}}/root-cause-tracing/SKILL.md` - Backward tracing technique
+- `{{skills_dir}}/creating-debug-tests-and-iterating - Use when debugging some unexpected externally-facing behavior and you do not have stack traces or error logs

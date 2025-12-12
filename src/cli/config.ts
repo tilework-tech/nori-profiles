@@ -20,6 +20,18 @@ export type RegistryAuth = {
 };
 
 /**
+ * Authentication credentials - supports both legacy password and new refresh token
+ */
+export type AuthCredentials = {
+  username: string;
+  organizationUrl: string;
+  // Token-based auth (preferred)
+  refreshToken?: string | null;
+  // Legacy password-based auth (deprecated, will be removed)
+  password?: string | null;
+};
+
+/**
  * Agent-specific configuration
  */
 export type AgentConfig = {
@@ -31,11 +43,7 @@ export type AgentConfig = {
  * Contains all persisted fields from disk plus required installDir
  */
 export type Config = {
-  auth?: {
-    username: string;
-    password: string;
-    organizationUrl: string;
-  } | null;
+  auth?: AuthCredentials | null;
   /** @deprecated Use agents.claude-code.profile instead */
   profile?: {
     baseProfile: string;
@@ -46,6 +54,8 @@ export type Config = {
   registryAuths?: Array<RegistryAuth> | null;
   /** Per-agent configuration settings */
   agents?: Record<string, AgentConfig> | null;
+  /** List of AI agents installed at this installDir */
+  installedAgents?: Array<string> | null;
 };
 
 /**
@@ -79,6 +89,22 @@ export const getDefaultProfile = (): { baseProfile: string } => {
  */
 export const isPaidInstall = (args: { config: Config }): boolean => {
   return args.config.auth != null;
+};
+
+/**
+ * Check if config uses legacy password-based authentication
+ * @param args - Configuration arguments
+ * @param args.config - The config to check
+ *
+ * @returns True if the config has password but no refreshToken (needs migration)
+ */
+export const isLegacyPasswordConfig = (args: { config: Config }): boolean => {
+  const { config } = args;
+  if (config.auth == null) {
+    return false;
+  }
+  // Legacy if has password but no refreshToken
+  return config.auth.password != null && config.auth.refreshToken == null;
 };
 
 /**
@@ -168,18 +194,27 @@ export const loadConfig = async (args: {
       };
 
       // Check if auth credentials exist and are valid
+      // Support both token-based auth (refreshToken) and legacy password-based auth
+      const hasUsername =
+        config.username && typeof config.username === "string";
+      const hasOrganizationUrl =
+        config.organizationUrl && typeof config.organizationUrl === "string";
+      const hasRefreshToken =
+        config.refreshToken && typeof config.refreshToken === "string";
+      const hasPassword =
+        config.password && typeof config.password === "string";
+
+      // Require either refreshToken or password
       if (
-        config.username &&
-        config.password &&
-        config.organizationUrl &&
-        typeof config.username === "string" &&
-        typeof config.password === "string" &&
-        typeof config.organizationUrl === "string"
+        hasUsername &&
+        hasOrganizationUrl &&
+        (hasRefreshToken || hasPassword)
       ) {
         result.auth = {
           username: config.username,
-          password: config.password,
           organizationUrl: config.organizationUrl,
+          refreshToken: hasRefreshToken ? config.refreshToken : null,
+          password: hasPassword ? config.password : null,
         };
       }
 
@@ -205,11 +240,11 @@ export const loadConfig = async (args: {
         result.sendSessionTranscript = "enabled"; // Default value
       }
 
-      // Check if autoupdate exists, default to 'enabled'
+      // Check if autoupdate exists, default to 'disabled'
       if (config.autoupdate === "enabled" || config.autoupdate === "disabled") {
         result.autoupdate = config.autoupdate;
       } else {
-        result.autoupdate = "enabled"; // Default value
+        result.autoupdate = "disabled"; // Default value
       }
 
       // Check if registryAuths exists and is valid array
@@ -239,12 +274,23 @@ export const loadConfig = async (args: {
         };
       }
 
-      // Return result if we have at least auth, profile, agents, or sendSessionTranscript
+      // Check if installedAgents exists and is valid array of strings
+      if (Array.isArray(config.installedAgents)) {
+        const validAgents = config.installedAgents.filter(
+          (agent: unknown) => typeof agent === "string",
+        );
+        if (validAgents.length > 0) {
+          result.installedAgents = validAgents;
+        }
+      }
+
+      // Return result if we have at least auth, profile, agents, sendSessionTranscript, or installedAgents
       if (
         result.auth != null ||
         result.profile != null ||
         result.agents != null ||
-        result.sendSessionTranscript != null
+        result.sendSessionTranscript != null ||
+        result.installedAgents != null
       ) {
         return result;
       }
@@ -260,7 +306,8 @@ export const loadConfig = async (args: {
  * Save configuration to disk
  * @param args - Configuration arguments
  * @param args.username - User's username (null to skip auth)
- * @param args.password - User's password (null to skip auth)
+ * @param args.password - User's password (deprecated, use refreshToken instead)
+ * @param args.refreshToken - Firebase refresh token (preferred over password)
  * @param args.organizationUrl - Organization URL (null to skip auth)
  * @param args.profile - Profile selection (null to skip profile) - deprecated, use agents instead
  * @param args.sendSessionTranscript - Session transcript setting (null to skip)
@@ -268,27 +315,32 @@ export const loadConfig = async (args: {
  * @param args.installDir - Installation directory
  * @param args.registryAuths - Array of registry authentication credentials (null to skip)
  * @param args.agents - Per-agent configuration settings (null to skip)
+ * @param args.installedAgents - List of installed AI agents (null to skip)
  */
 export const saveConfig = async (args: {
   username: string | null;
-  password: string | null;
+  password?: string | null;
+  refreshToken?: string | null;
   organizationUrl: string | null;
   profile?: { baseProfile: string } | null;
   sendSessionTranscript?: "enabled" | "disabled" | null;
   autoupdate?: "enabled" | "disabled" | null;
   registryAuths?: Array<RegistryAuth> | null;
   agents?: Record<string, AgentConfig> | null;
+  installedAgents?: Array<string> | null;
   installDir: string;
 }): Promise<void> => {
   const {
     username,
     password,
+    refreshToken,
     organizationUrl,
     profile,
     sendSessionTranscript,
     autoupdate,
     registryAuths,
     agents,
+    installedAgents,
     installDir,
   } = args;
   const configPath = getConfigPath({ installDir });
@@ -296,13 +348,22 @@ export const saveConfig = async (args: {
   const config: any = {};
 
   // Add auth credentials if provided
-  if (username != null && password != null && organizationUrl != null) {
+  // Prefer refreshToken over password (token-based auth is more secure)
+  if (username != null && organizationUrl != null) {
     // Normalize organization URL to remove trailing slashes
     const normalizedUrl = normalizeUrl({ baseUrl: organizationUrl });
 
     config.username = username;
-    config.password = password;
     config.organizationUrl = normalizedUrl;
+
+    // If refreshToken is provided, use it and don't store password
+    if (refreshToken != null) {
+      config.refreshToken = refreshToken;
+      // Explicitly do NOT save password when refreshToken is present
+    } else if (password != null) {
+      // Legacy: only save password if no refreshToken
+      config.password = password;
+    }
   }
 
   // Add agents if provided (new multi-agent format)
@@ -334,6 +395,11 @@ export const saveConfig = async (args: {
     config.registryAuths = registryAuths;
   }
 
+  // Add installedAgents if provided and not empty
+  if (installedAgents != null && installedAgents.length > 0) {
+    config.installedAgents = installedAgents;
+  }
+
   // Always save installDir
   config.installDir = installDir;
 
@@ -355,6 +421,7 @@ const configSchema = {
   properties: {
     username: { type: "string" },
     password: { type: "string" },
+    refreshToken: { type: "string" },
     organizationUrl: { type: "string" },
     sendSessionTranscript: {
       type: "string",
@@ -396,6 +463,10 @@ const configSchema = {
           },
         },
       },
+    },
+    installedAgents: {
+      type: "array",
+      items: { type: "string" },
     },
   },
   additionalProperties: false,
