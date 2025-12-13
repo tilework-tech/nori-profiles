@@ -16,7 +16,7 @@ import { join } from "node:path";
 import minimist from "minimist";
 
 import { apiClient } from "@/api/index.js";
-import { loadConfig, getDefaultProfile, isPaidInstall } from "@/cli/config.js";
+import { loadConfig, isPaidInstall } from "@/cli/config.js";
 import { getInstallDirs } from "@/utils/path.js";
 
 /**
@@ -289,12 +289,9 @@ export const main = async (): Promise<void> => {
 
   const installDir = allInstallations[0]; // Use closest installation
 
-  // 2. Check tier
+  // 2. Check tier (only need installDir - isPaidInstall only checks config.auth)
   const existingConfig = await loadConfig({ installDir });
-  const config = existingConfig ?? {
-    profile: getDefaultProfile(),
-    installDir,
-  };
+  const config = existingConfig ?? { installDir };
 
   if (!isPaidInstall({ config })) {
     console.error("Error: This feature requires a paid Nori subscription.");
