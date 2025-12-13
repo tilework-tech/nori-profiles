@@ -33,7 +33,7 @@ The uninstall command uses two agent methods for global features:
 
 Each agent declares its own global features (e.g., claude-code has hooks, statusline, and global slash commands; cursor-agent has hooks and slash commands). If an agent has no global features, the global settings prompt is skipped entirely.
 
-The install command sets `installedAgents: [agentName]` in the config, which the config loader merges with any existing agents. The uninstall command prompts the user to select which agent to uninstall when multiple agents are installed at a location (in interactive mode).
+The install command sets both `agents: { [agentName]: { profile } }` (the per-agent profile configuration) and `installedAgents: [agentName]` (the list of installed agents) in the config. The config loader merges `installedAgents` with any existing agents. The uninstall command prompts the user to select which agent to uninstall when multiple agents are installed at a location (in interactive mode).
 
 **Install Agent-Specific Uninstall Logic:** The install command only runs uninstall cleanup when reinstalling the SAME agent (upgrade scenario). When installing a different agent (e.g., cursor-agent when claude-code is already installed), it skips uninstall to preserve the existing agent's installation. The logic:
 1. Reads config at start to get `installedAgents` list
