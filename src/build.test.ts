@@ -372,6 +372,58 @@ ${stderr || "(empty)"}`,
       expect(stdout).toContain("Bundling Paid Skill Scripts and Hook Scripts");
       expect(stdout).toMatch(/Successfully bundled \d+ script\(s\)/);
     });
+
+    it("should execute bundled hook scripts without dynamic require errors", () => {
+      // This test verifies that bundled hook scripts can actually run without
+      // crashing with "Dynamic require of 'util' is not supported" errors.
+      //
+      // The issue: When esbuild bundles CommonJS libraries (like Winston's
+      // logform which uses @colors/colors) into ESM format, dynamic require()
+      // calls for Node.js builtins fail at runtime.
+      //
+      // This test executes a bundled hook script to verify it runs cleanly.
+
+      const pluginDir = process.cwd();
+      const hookScript = path.join(
+        pluginDir,
+        "build/src/cli/features/claude-code/hooks/config/statistics.js",
+      );
+
+      // Verify the hook script exists
+      expect(fs.existsSync(hookScript)).toBe(true);
+
+      // Execute the hook script with empty stdin
+      // The script should exit gracefully without throwing "Dynamic require" error
+      let stderr = "";
+      let exitCode: number | null = null;
+
+      try {
+        execSync(`echo '{}' | node "${hookScript}"`, {
+          cwd: pluginDir,
+          encoding: "utf-8",
+          env: { ...process.env, FORCE_COLOR: "0" },
+          timeout: 10000, // 10 second timeout
+        });
+        exitCode = 0;
+      } catch (error: unknown) {
+        if (error && typeof error === "object") {
+          const execError = error as {
+            stderr?: string;
+            status?: number;
+          };
+          stderr = execError.stderr || "";
+          exitCode = execError.status ?? 1;
+        }
+      }
+
+      // The critical check: stderr should NOT contain dynamic require errors
+      expect(stderr).not.toContain("Dynamic require of");
+      expect(stderr).not.toContain("is not supported");
+
+      // Script should exit cleanly (exit code 0)
+      // The statistics hook exits with 0 even on errors to not crash sessions
+      expect(exitCode).toBe(0);
+    });
   });
 
   it("should copy cursor-agent slashcommands config files to build", () => {

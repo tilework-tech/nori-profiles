@@ -21,6 +21,35 @@ This script uses esbuild to create standalone bundles that:
 - Produce single-file executables that work from any location
 - Preserve the shebang (`#!/usr/bin/env node`) for direct execution
 
+## ESM/CommonJS Compatibility
+
+### The Problem
+
+When esbuild bundles CommonJS libraries into ESM format, dynamic `require()` calls for Node.js builtins fail at runtime with:
+
+```
+Error: Dynamic require of 'util' is not supported
+```
+
+This occurs because:
+1. Scripts are bundled as ESM (`format: "esm"`)
+2. Some dependencies are CommonJS libraries that use dynamic `require()`
+3. ESM doesn't have a native `require` function
+
+**Affected dependency chain**: Winston logger -> logform -> @colors/colors -> `require('util')`
+
+### The Solution
+
+The bundler injects `createRequire` from Node.js 'module' package via esbuild's `banner` option:
+
+```javascript
+banner: {
+  js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
+},
+```
+
+This provides a working `require` function in ESM context, allowing bundled CommonJS code to execute their dynamic require() calls for Node.js builtins.
+
 ## Build Process Integration
 
 1. TypeScript compiles `src/` to `build/` (with `@` aliases)
