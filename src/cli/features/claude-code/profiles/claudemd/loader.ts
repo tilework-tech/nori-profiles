@@ -261,10 +261,16 @@ const insertClaudeMd = async (args: { config: Config }): Promise<void> => {
 
   info({ message: "Configuring CLAUDE.md with coding task instructions..." });
 
-  // Get profile name from config (default to senior-swe)
-  const profileName =
-    getAgentProfile({ config, agentName: "claude-code" })?.baseProfile ||
-    "senior-swe";
+  // Get profile name from config - error if not configured
+  const profileName = getAgentProfile({
+    config,
+    agentName: "claude-code",
+  })?.baseProfile;
+  if (profileName == null) {
+    throw new Error(
+      "No profile configured for claude-code. Run 'nori-ai install' to configure a profile.",
+    );
+  }
 
   // Get paths using installDir
   const claudeDir = getClaudeDir({ installDir: config.installDir });
