@@ -2,6 +2,7 @@
  * Tests for environment constants
  */
 
+import * as fs from "fs";
 import * as path from "path";
 
 import { describe, it, expect } from "vitest";
@@ -14,9 +15,12 @@ describe("CLI_ROOT", () => {
   });
 
   it("should point to the package root directory", () => {
-    // CLI_ROOT should be the directory containing package.json
-    // It should be 3 levels up from src/cli/env.ts -> ../../.. -> root
-    expect(CLI_ROOT).toContain("nori-profiles");
+    // CLI_ROOT should be the directory containing package.json with name "nori-ai"
+    const packageJsonPath = path.join(CLI_ROOT, "package.json");
+    expect(fs.existsSync(packageJsonPath)).toBe(true);
+
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+    expect(packageJson.name).toBe("nori-ai");
   });
 
   it("should not contain src directory", () => {
