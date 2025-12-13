@@ -7,7 +7,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
-import { isPaidInstall, type Config } from "@/cli/config.js";
+import { isPaidInstall, getAgentProfile, type Config } from "@/cli/config.js";
 import {
   getClaudeDir,
   getClaudeSkillsDir,
@@ -92,7 +92,9 @@ const installSkills = async (args: { config: Config }): Promise<void> => {
   info({ message: "Installing Nori skills..." });
 
   // Get profile name from config (default to senior-swe)
-  const profileName = config.profile?.baseProfile || "senior-swe";
+  const profileName =
+    getAgentProfile({ config, agentName: "claude-code" })?.baseProfile ||
+    "senior-swe";
   const configDir = getConfigDir({
     profileName,
     installDir: config.installDir,
@@ -322,7 +324,9 @@ const validate = async (args: {
   }
 
   // Verify expected skills exist based on tier
-  const profileName = config.profile?.baseProfile || "senior-swe";
+  const profileName =
+    getAgentProfile({ config, agentName: "claude-code" })?.baseProfile ||
+    "senior-swe";
   const configDir = getConfigDir({
     profileName,
     installDir: config.installDir,

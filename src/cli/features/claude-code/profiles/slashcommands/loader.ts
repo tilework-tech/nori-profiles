@@ -7,6 +7,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
+import { getAgentProfile, type Config } from "@/cli/config.js";
 import {
   getClaudeDir,
   getClaudeCommandsDir,
@@ -14,7 +15,6 @@ import {
 import { substituteTemplatePaths } from "@/cli/features/claude-code/template.js";
 import { success, info, warn } from "@/cli/logger.js";
 
-import type { Config } from "@/cli/config.js";
 import type { ValidationResult } from "@/cli/features/agentRegistry.js";
 import type { ProfileLoader } from "@/cli/features/claude-code/profiles/profileLoaderRegistry.js";
 
@@ -52,7 +52,9 @@ const registerSlashCommands = async (args: {
   info({ message: "Registering Nori slash commands..." });
 
   // Get profile name from config (default to senior-swe)
-  const profileName = config.profile?.baseProfile || "senior-swe";
+  const profileName =
+    getAgentProfile({ config, agentName: "claude-code" })?.baseProfile ||
+    "senior-swe";
   const configDir = getConfigDir({
     profileName,
     installDir: config.installDir,
@@ -128,7 +130,9 @@ const unregisterSlashCommands = async (args: {
   let removedCount = 0;
 
   // Get profile name from config (default to senior-swe)
-  const profileName = config.profile?.baseProfile || "senior-swe";
+  const profileName =
+    getAgentProfile({ config, agentName: "claude-code" })?.baseProfile ||
+    "senior-swe";
   const configDir = getConfigDir({
     profileName,
     installDir: config.installDir,
@@ -215,7 +219,9 @@ const validate = async (args: {
   }
 
   // Get profile name from config (default to senior-swe)
-  const profileName = config.profile?.baseProfile || "senior-swe";
+  const profileName =
+    getAgentProfile({ config, agentName: "claude-code" })?.baseProfile ||
+    "senior-swe";
   const configDir = getConfigDir({
     profileName,
     installDir: config.installDir,
