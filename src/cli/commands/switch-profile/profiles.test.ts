@@ -453,6 +453,7 @@ describe("registerSwitchProfileCommand", () => {
         "senior-swe",
         "--install-dir",
         testInstallDir,
+        "--non-interactive",
       ]);
     } catch {
       // May throw due to exit
