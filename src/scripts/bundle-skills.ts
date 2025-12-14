@@ -32,9 +32,13 @@ const bundleSkill = async (args: { scriptPath: string }): Promise<void> => {
       format: "esm",
       outfile: scriptPath, // Replace original file
       allowOverwrite: true, // Allow overwriting the input file
-      // Don't add banner - the source files already have shebangs
-      // Don't bundle these - they should be available in the installed environment
-      external: [],
+      // Inject createRequire to fix "Dynamic require of 'util' is not supported" errors.
+      // When CommonJS libraries (like Winston's logform which uses @colors/colors)
+      // are bundled into ESM format, their dynamic require() calls fail at runtime.
+      // By injecting createRequire, we provide a working require function in ESM context.
+      banner: {
+        js: `import { createRequire } from 'module'; const require = createRequire(import.meta.url);`,
+      },
       // Minification is optional - disabled for easier debugging
       minify: false,
       sourcemap: false,

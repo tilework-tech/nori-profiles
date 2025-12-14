@@ -43,8 +43,9 @@ import {
 } from "@/cli/logger.js";
 import { promptUser } from "@/cli/prompt.js";
 import {
-  buildUninstallCommand,
   getCurrentPackageVersion,
+  getInstalledVersion,
+  supportsAgentFlag,
 } from "@/cli/version.js";
 import { normalizeInstallDir, getInstallDirs } from "@/utils/path.js";
 
@@ -383,8 +384,6 @@ export const interactive = async (args?: {
   const existingConfig = await loadAndMigrateConfig({
     installDir: normalizedInstallDir,
   });
-  // Get version from config (after migration, version should be current)
-  const previousVersion = existingConfig?.version ?? null;
 
   // Determine which agents are installed using agents object keys
   // For backwards compatibility: if no agents but existing installation exists,
@@ -400,17 +399,22 @@ export const interactive = async (args?: {
   }
   const agentAlreadyInstalled = installedAgents.includes(agentImpl.name);
 
-  if (!skipUninstall && agentAlreadyInstalled && previousVersion != null) {
+  if (!skipUninstall && agentAlreadyInstalled) {
+    // Get version from config - only when we know an installation exists
+    // Note: getInstalledVersion reads from disk, which still has the original version
+    // (loadAndMigrateConfig doesn't save to disk, the config loader does that later)
+    const previousVersion = await getInstalledVersion({
+      installDir: normalizedInstallDir,
+    });
     info({
       message: `Cleaning up previous installation (v${previousVersion})...`,
     });
 
     try {
-      const uninstallCmd = buildUninstallCommand({
-        installDir: normalizedInstallDir,
-        agentName: agentImpl.name,
-        installedVersion: previousVersion,
-      });
+      let uninstallCmd = `nori-ai uninstall --non-interactive --install-dir="${normalizedInstallDir}"`;
+      if (supportsAgentFlag({ version: previousVersion })) {
+        uninstallCmd += ` --agent="${agentImpl.name}"`;
+      }
       execSync(uninstallCmd, { stdio: "inherit" });
     } catch (err: any) {
       info({
@@ -582,8 +586,6 @@ export const noninteractive = async (args?: {
   const existingConfig = await loadAndMigrateConfig({
     installDir: normalizedInstallDir,
   });
-  // Get version from config (after migration, version should be current)
-  const previousVersion = existingConfig?.version ?? null;
 
   // Determine which agents are installed using agents object keys
   // For backwards compatibility: if no agents but existing installation exists,
@@ -599,17 +601,22 @@ export const noninteractive = async (args?: {
   }
   const agentAlreadyInstalled = installedAgents.includes(agentImpl.name);
 
-  if (!skipUninstall && agentAlreadyInstalled && previousVersion != null) {
+  if (!skipUninstall && agentAlreadyInstalled) {
+    // Get version from config - only when we know an installation exists
+    // Note: getInstalledVersion reads from disk, which still has the original version
+    // (loadAndMigrateConfig doesn't save to disk, the config loader does that later)
+    const previousVersion = await getInstalledVersion({
+      installDir: normalizedInstallDir,
+    });
     info({
       message: `Cleaning up previous installation (v${previousVersion})...`,
     });
 
     try {
-      const uninstallCmd = buildUninstallCommand({
-        installDir: normalizedInstallDir,
-        agentName: agentImpl.name,
-        installedVersion: previousVersion,
-      });
+      let uninstallCmd = `nori-ai uninstall --non-interactive --install-dir="${normalizedInstallDir}"`;
+      if (supportsAgentFlag({ version: previousVersion })) {
+        uninstallCmd += ` --agent="${agentImpl.name}"`;
+      }
       execSync(uninstallCmd, { stdio: "inherit" });
     } catch (err: any) {
       info({
@@ -801,12 +808,17 @@ export const registerInstallCommand = (args: { program: Command }): void => {
       "-p, --profile <name>",
       "Profile to install (required for non-interactive install without existing config)",
     )
+    .option(
+      "--skip-uninstall",
+      "Skip uninstall step (useful for profile switching to preserve user customizations)",
+    )
     .action(async (options) => {
       // Get global options from parent
       const globalOpts = program.opts();
 
       await main({
         nonInteractive: globalOpts.nonInteractive || null,
+        skipUninstall: options.skipUninstall || null,
         installDir: globalOpts.installDir || null,
         agent: globalOpts.agent || null,
         silent: globalOpts.silent || null,

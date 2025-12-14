@@ -2,25 +2,27 @@
  * Tests for cursor-agent nori-switch-profile intercepted slash command
  */
 
+import * as childProcess from "child_process";
 import * as fs from "fs/promises";
 import { tmpdir } from "os";
 import * as path from "path";
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-import { main as installMain } from "@/cli/commands/install/install.js";
 import { stripAnsi } from "@/cli/features/test-utils/index.js";
 
 import type { HookInput } from "./types.js";
 
-import { noriSwitchProfile } from "./nori-switch-profile.js";
+// Mock child_process.execSync for testing subprocess invocation
+vi.mock("child_process", async (importOriginal) => {
+  const actual = (await importOriginal()) as typeof childProcess;
+  return {
+    ...actual,
+    execSync: vi.fn(),
+  };
+});
 
-// Mock installMain to prevent real install execution in tests
-vi.mock("@/cli/commands/install/install.js", () => ({
-  main: vi.fn(async () => {
-    // Empty mock - just prevents real install execution
-  }),
-}));
+import { noriSwitchProfile } from "./nori-switch-profile.js";
 
 describe("cursor-agent nori-switch-profile", () => {
   let testDir: string;
@@ -77,6 +79,7 @@ describe("cursor-agent nori-switch-profile", () => {
     if (testDir) {
       await fs.rm(testDir, { recursive: true, force: true });
     }
+    vi.clearAllMocks();
   });
 
   const createInput = (args: {
@@ -224,10 +227,17 @@ describe("cursor-agent nori-switch-profile", () => {
     });
   });
 
-  describe("profile application", () => {
-    it("should run install loaders after switching profile to apply changes", async () => {
-      // Clear any previous calls
-      vi.mocked(installMain).mockClear();
+  describe("profile application via subprocess", () => {
+    it("should run nori-ai install via subprocess after switching profile", async () => {
+      // This test verifies that /nori-switch-profile runs the install command
+      // via subprocess (not dynamic import) to apply profile changes.
+      //
+      // IMPORTANT: We use subprocess instead of dynamic import because this
+      // hook script is bundled by esbuild. When bundled, __dirname resolves
+      // to the bundled script location (hooks/config/) instead of the original
+      // loader locations, breaking path resolution in installMain's loaders.
+      // Spawning nori-ai as a subprocess runs the CLI from its installed
+      // location where paths resolve correctly.
 
       const input = createInput({ prompt: "/nori-switch-profile amol" });
       const result = await noriSwitchProfile.run({ input });
@@ -235,16 +245,39 @@ describe("cursor-agent nori-switch-profile", () => {
       expect(result).not.toBeNull();
       expect(result!.decision).toBe("block");
 
-      // Verify install main was called with cursor-agent (not claude-code)
-      expect(installMain).toHaveBeenCalledTimes(1);
-      const callArgs = vi.mocked(installMain).mock.calls[0][0];
-      expect(callArgs?.nonInteractive).toBe(true);
-      expect(callArgs?.skipUninstall).toBe(true);
-      expect(callArgs?.installDir).toBe(testDir);
-      expect(callArgs?.agent).toBe("cursor-agent");
-      // CRITICAL: Install must be silent to prevent stdout pollution
-      // during hook execution (JSON response corruption)
-      expect(callArgs?.silent).toBe(true);
+      // Verify execSync was called with correct nori-ai install command
+      expect(childProcess.execSync).toHaveBeenCalledTimes(1);
+      const execSyncCall = vi.mocked(childProcess.execSync).mock.calls[0];
+      const command = execSyncCall[0] as string;
+
+      // Verify command includes all required flags
+      expect(command).toContain("nori-ai install");
+      expect(command).toContain("--non-interactive");
+      expect(command).toContain("--silent");
+      expect(command).toContain("--skip-uninstall");
+      expect(command).toContain(`--install-dir "${testDir}"`);
+      // cursor-agent should use cursor-agent, not claude-code
+      expect(command).toContain("--agent cursor-agent");
+
+      // Verify stdio is configured to suppress output (prevents stdout pollution)
+      const options = execSyncCall[1] as { stdio?: unknown };
+      expect(options.stdio).toEqual(["ignore", "ignore", "ignore"]);
+    });
+
+    it("should handle subprocess errors gracefully", async () => {
+      // Mock execSync to throw an error
+      vi.mocked(childProcess.execSync).mockImplementation(() => {
+        throw new Error("Command failed: nori-ai not found");
+      });
+
+      const input = createInput({ prompt: "/nori-switch-profile amol" });
+      const result = await noriSwitchProfile.run({ input });
+
+      expect(result).not.toBeNull();
+      expect(result!.decision).toBe("block");
+      const plainReason = stripAnsi(result!.reason!);
+      expect(plainReason).toContain("Failed to switch profile");
+      expect(plainReason).toContain("nori-ai not found");
     });
   });
 });

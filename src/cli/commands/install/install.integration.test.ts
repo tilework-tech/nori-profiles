@@ -229,6 +229,7 @@ describe("install integration test", () => {
       profile: {
         baseProfile: "senior-swe",
       },
+      agents: { "claude-code": {} },
     };
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(paidConfig, null, 2));
 
@@ -272,10 +273,11 @@ describe("install integration test", () => {
 
     // STEP 1: Create config WITHOUT auth credentials (free user)
     const freeConfig = {
-      version: "19.0.0",
+      version: "18.0.0",
       profile: {
         baseProfile: "senior-swe",
       },
+      agents: { "claude-code": {} },
     };
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(freeConfig, null, 2));
 
@@ -411,6 +413,7 @@ describe("install integration test", () => {
       profile: {
         baseProfile: "senior-swe",
       },
+      agents: { "claude-code": {} },
     };
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(paidConfig, null, 2));
 
