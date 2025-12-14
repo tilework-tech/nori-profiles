@@ -63,6 +63,7 @@ describe("cursor-agent nori-switch-profile", () => {
     await fs.writeFile(
       configPath,
       JSON.stringify({
+        version: "19.0.0",
         agents: {
           "cursor-agent": {
             profile: {

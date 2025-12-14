@@ -27,6 +27,7 @@ import {
   type Config,
 } from "@/cli/config.js";
 import { AgentRegistry } from "@/cli/features/agentRegistry.js";
+import { migrate } from "@/cli/features/migration.js";
 import {
   error,
   success,
@@ -86,6 +87,47 @@ const getAvailableProfiles = async (args: {
   }
 
   return Array.from(profilesMap.values());
+};
+
+/**
+ * Load existing config and run migrations if needed
+ *
+ * @param args - Configuration arguments
+ * @param args.installDir - Installation directory
+ *
+ * @throws Error if config exists but has no version field
+ *
+ * @returns Migrated config, or null if no existing config
+ */
+const loadAndMigrateConfig = async (args: {
+  installDir: string;
+}): Promise<Config | null> => {
+  const { installDir } = args;
+
+  // Load existing config
+  const existingConfig = await loadConfig({ installDir });
+
+  // If no config, this is a first-time install - skip migration
+  if (existingConfig == null) {
+    return null;
+  }
+
+  // If config exists but has no version, fail
+  // This catches very old installs that need manual intervention
+  if (existingConfig.version == null) {
+    throw new Error(
+      "Existing config has no version field. Please run 'nori-ai uninstall' first, then reinstall.",
+    );
+  }
+
+  // Run migrations
+  const migratedConfig = await migrate({
+    previousVersion: existingConfig.version,
+    config: existingConfig as unknown as Record<string, unknown>,
+    installDir,
+  });
+
+  return migratedConfig;
 };
 
 /**
@@ -338,7 +380,8 @@ export const interactive = async (args?: {
 
   // Handle existing installation cleanup
   // Only uninstall if THIS SPECIFIC agent is already installed
-  const existingConfig = await loadConfig({
+  // Load config and run any necessary migrations
+  const existingConfig = await loadAndMigrateConfig({
     installDir: normalizedInstallDir,
   });
 
@@ -358,6 +401,8 @@ export const interactive = async (args?: {
 
   if (!skipUninstall && agentAlreadyInstalled) {
     // Get version from config - only when we know an installation exists
+    // Note: getInstalledVersion reads from disk, which still has the original version
+    // (loadAndMigrateConfig doesn't save to disk, the config loader does that later)
     const previousVersion = await getInstalledVersion({
       installDir: normalizedInstallDir,
     });
@@ -537,7 +582,8 @@ export const noninteractive = async (args?: {
 
   // Handle existing installation cleanup
   // Only uninstall if THIS SPECIFIC agent is already installed
-  const existingConfig = await loadConfig({
+  // Load config and run any necessary migrations
+  const existingConfig = await loadAndMigrateConfig({
     installDir: normalizedInstallDir,
   });
 
@@ -557,6 +603,8 @@ export const noninteractive = async (args?: {
 
   if (!skipUninstall && agentAlreadyInstalled) {
     // Get version from config - only when we know an installation exists
+    // Note: getInstalledVersion reads from disk, which still has the original version
+    // (loadAndMigrateConfig doesn't save to disk, the config loader does that later)
     const previousVersion = await getInstalledVersion({
       installDir: normalizedInstallDir,
     });
