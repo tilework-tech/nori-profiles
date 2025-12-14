@@ -19,6 +19,12 @@ vi.mock("fs", () => ({
   existsSync: vi.fn(),
 }));
 
+// Mock fs/promises for settings.json operations
+vi.mock("fs/promises", () => ({
+  readFile: vi.fn(),
+  writeFile: vi.fn(),
+}));
+
 // Mock logger to suppress output
 vi.mock("@/cli/logger.js", () => ({
   debug: vi.fn(),
@@ -39,6 +45,11 @@ vi.mock("@/cli/config.js", () => ({
 // Mock path utilities
 vi.mock("@/utils/path.js", () => ({
   getInstallDirs: vi.fn(),
+}));
+
+// Mock claude-code paths
+vi.mock("@/cli/features/claude-code/paths.js", () => ({
+  getClaudeHomeSettingsFile: vi.fn(() => "/home/user/.claude/settings.json"),
 }));
 
 // Stub the __PACKAGE_VERSION__ that gets injected at build time
@@ -475,6 +486,11 @@ describe("autoupdate", () => {
       const mockOpenSync = vi.mocked(openSync);
       mockOpenSync.mockReturnValue(3 as any);
 
+      // Mock fs/promises for settings.json (no hooks to clear)
+      const { readFile, writeFile } = await import("fs/promises");
+      vi.mocked(readFile).mockResolvedValue("{}");
+      vi.mocked(writeFile).mockResolvedValue();
+
       // Version "14.0.0" is read from config
 
       // Mock execSync to return newer version
@@ -518,8 +534,12 @@ describe("autoupdate", () => {
       const { debug } = await import("@/cli/logger.js");
       const mockDebug = vi.mocked(debug);
       expect(mockDebug).toHaveBeenCalled();
-      const debugCall = mockDebug.mock.calls[0];
-      const logContent = debugCall[0].message;
+      // Find the debug call that contains "Nori Autoupdate" (skip clearHooks debug message)
+      const autoupdateDebugCall = mockDebug.mock.calls.find((call) =>
+        call[0].message.includes("Nori Autoupdate"),
+      );
+      expect(autoupdateDebugCall).toBeDefined();
+      const logContent = autoupdateDebugCall![0].message;
 
       // Verify log content includes timestamp, version, and command
       expect(logContent).toContain("Nori Autoupdate");
@@ -1056,6 +1076,319 @@ describe("autoupdate", () => {
       expect(parsed.systemMessage).toContain("Autoupdate is disabled");
 
       consoleLogSpy.mockRestore();
+    });
+  });
+
+  describe("stale hooks prevention", () => {
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      vi.resetModules();
+
+      // Setup default mocks
+      const { getInstallDirs } = await import("@/utils/path.js");
+      vi.mocked(getInstallDirs).mockReturnValue(["/home/user/project"]);
+
+      const { existsSync } = await import("fs");
+      vi.mocked(existsSync).mockReturnValue(true);
+    });
+
+    it("should clear hooks from settings.json before spawning npm install", async () => {
+      // This test verifies the fix for stale hooks: when autoupdate runs,
+      // it should remove hooks from settings.json BEFORE npm install replaces files.
+      // This prevents MODULE_NOT_FOUND errors when session ends with stale hook paths.
+
+      // Mock openSync for spawn stdio
+      const { openSync } = await import("fs");
+      vi.mocked(openSync).mockReturnValue(3 as any);
+
+      // Mock execSync to return newer version
+      const mockExecSync = vi.mocked(execSync);
+      mockExecSync.mockReturnValue("14.2.0\n");
+
+      // Mock spawn
+      const mockSpawn = vi.mocked(spawn);
+      const mockChild = { unref: vi.fn(), on: vi.fn() };
+      mockSpawn.mockReturnValue(mockChild as any);
+
+      // Mock loadConfig with autoupdate enabled
+      const { loadConfig } = await import("@/cli/config.js");
+      vi.mocked(loadConfig).mockResolvedValue({
+        auth: null,
+        agents: null,
+        version: "14.1.0",
+        autoupdate: "enabled",
+        installDir: process.cwd(),
+      });
+
+      // Mock trackEvent
+      const { trackEvent } = await import("@/cli/analytics.js");
+      vi.mocked(trackEvent).mockResolvedValue();
+
+      // Mock fs/promises to track settings.json operations
+      const { readFile, writeFile } = await import("fs/promises");
+      const mockReadFile = vi.mocked(readFile);
+      const mockWriteFile = vi.mocked(writeFile);
+
+      // Setup settings.json with hooks
+      const settingsWithHooks = {
+        $schema: "https://json.schemastore.org/claude-code-settings.json",
+        includeCoAuthoredBy: false,
+        hooks: {
+          SessionEnd: [
+            {
+              matcher: "*",
+              hooks: [
+                {
+                  type: "command",
+                  command: "node /old/path/to/summarize.js",
+                  description: "Old hook",
+                },
+              ],
+            },
+          ],
+        },
+      };
+      mockReadFile.mockResolvedValue(JSON.stringify(settingsWithHooks));
+      mockWriteFile.mockResolvedValue();
+
+      // Spy on console.log
+      const consoleLogSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+
+      // Run autoupdate
+      const autoupdate = await import("./autoupdate.js");
+      await autoupdate.main();
+
+      // Verify writeFile was called to clear hooks BEFORE spawn
+      expect(mockWriteFile).toHaveBeenCalled();
+
+      // Get the order of calls - writeFile should be called before spawn
+      const writeFileCallOrder = mockWriteFile.mock.invocationCallOrder[0];
+      const spawnCallOrder = mockSpawn.mock.invocationCallOrder[0];
+      expect(writeFileCallOrder).toBeLessThan(spawnCallOrder);
+
+      // Verify the written content has hooks removed
+      const writtenContent = JSON.parse(
+        mockWriteFile.mock.calls[0][1] as string,
+      );
+      expect(writtenContent.hooks).toBeUndefined();
+
+      // Verify other settings are preserved
+      expect(writtenContent.$schema).toBe(
+        "https://json.schemastore.org/claude-code-settings.json",
+      );
+      expect(writtenContent.includeCoAuthoredBy).toBe(false);
+
+      consoleLogSpy.mockRestore();
+    });
+
+    it("should handle missing settings.json gracefully when clearing hooks", async () => {
+      // Mock openSync for spawn stdio
+      const { openSync } = await import("fs");
+      vi.mocked(openSync).mockReturnValue(3 as any);
+
+      // Mock execSync to return newer version
+      const mockExecSync = vi.mocked(execSync);
+      mockExecSync.mockReturnValue("14.2.0\n");
+
+      // Mock spawn
+      const mockSpawn = vi.mocked(spawn);
+      const mockChild = { unref: vi.fn(), on: vi.fn() };
+      mockSpawn.mockReturnValue(mockChild as any);
+
+      // Mock loadConfig with autoupdate enabled
+      const { loadConfig } = await import("@/cli/config.js");
+      vi.mocked(loadConfig).mockResolvedValue({
+        auth: null,
+        agents: null,
+        version: "14.1.0",
+        autoupdate: "enabled",
+        installDir: process.cwd(),
+      });
+
+      // Mock trackEvent
+      const { trackEvent } = await import("@/cli/analytics.js");
+      vi.mocked(trackEvent).mockResolvedValue();
+
+      // Mock fs/promises - readFile throws (file doesn't exist)
+      const { readFile, writeFile } = await import("fs/promises");
+      const mockReadFile = vi.mocked(readFile);
+      const mockWriteFile = vi.mocked(writeFile);
+      mockReadFile.mockRejectedValue(new Error("ENOENT: no such file"));
+      mockWriteFile.mockResolvedValue();
+
+      // Spy on console.log
+      const consoleLogSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+
+      // Run autoupdate - should NOT throw
+      const autoupdate = await import("./autoupdate.js");
+      await autoupdate.main();
+
+      // Verify spawn was still called (graceful handling)
+      expect(mockSpawn).toHaveBeenCalled();
+
+      consoleLogSpy.mockRestore();
+    });
+
+    it("should handle malformed settings.json gracefully when clearing hooks", async () => {
+      // Mock openSync for spawn stdio
+      const { openSync } = await import("fs");
+      vi.mocked(openSync).mockReturnValue(3 as any);
+
+      // Mock execSync to return newer version
+      const mockExecSync = vi.mocked(execSync);
+      mockExecSync.mockReturnValue("14.2.0\n");
+
+      // Mock spawn
+      const mockSpawn = vi.mocked(spawn);
+      const mockChild = { unref: vi.fn(), on: vi.fn() };
+      mockSpawn.mockReturnValue(mockChild as any);
+
+      // Mock loadConfig with autoupdate enabled
+      const { loadConfig } = await import("@/cli/config.js");
+      vi.mocked(loadConfig).mockResolvedValue({
+        auth: null,
+        agents: null,
+        version: "14.1.0",
+        autoupdate: "enabled",
+        installDir: process.cwd(),
+      });
+
+      // Mock trackEvent
+      const { trackEvent } = await import("@/cli/analytics.js");
+      vi.mocked(trackEvent).mockResolvedValue();
+
+      // Mock fs/promises - readFile returns invalid JSON
+      const { readFile, writeFile } = await import("fs/promises");
+      const mockReadFile = vi.mocked(readFile);
+      const mockWriteFile = vi.mocked(writeFile);
+      mockReadFile.mockResolvedValue("{ invalid json }");
+      mockWriteFile.mockResolvedValue();
+
+      // Spy on console.log
+      const consoleLogSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+
+      // Run autoupdate - should NOT throw
+      const autoupdate = await import("./autoupdate.js");
+      await autoupdate.main();
+
+      // Verify spawn was still called (graceful handling)
+      expect(mockSpawn).toHaveBeenCalled();
+
+      consoleLogSpy.mockRestore();
+    });
+
+    it("should preserve other settings.json keys when clearing hooks", async () => {
+      // Mock openSync for spawn stdio
+      const { openSync } = await import("fs");
+      vi.mocked(openSync).mockReturnValue(3 as any);
+
+      // Mock execSync to return newer version
+      const mockExecSync = vi.mocked(execSync);
+      mockExecSync.mockReturnValue("14.2.0\n");
+
+      // Mock spawn
+      const mockSpawn = vi.mocked(spawn);
+      const mockChild = { unref: vi.fn(), on: vi.fn() };
+      mockSpawn.mockReturnValue(mockChild as any);
+
+      // Mock loadConfig with autoupdate enabled
+      const { loadConfig } = await import("@/cli/config.js");
+      vi.mocked(loadConfig).mockResolvedValue({
+        auth: null,
+        agents: null,
+        version: "14.1.0",
+        autoupdate: "enabled",
+        installDir: process.cwd(),
+      });
+
+      // Mock trackEvent
+      const { trackEvent } = await import("@/cli/analytics.js");
+      vi.mocked(trackEvent).mockResolvedValue();
+
+      // Mock fs/promises
+      const { readFile, writeFile } = await import("fs/promises");
+      const mockReadFile = vi.mocked(readFile);
+      const mockWriteFile = vi.mocked(writeFile);
+
+      // Setup settings.json with hooks AND other important settings
+      const settingsWithHooks = {
+        $schema: "https://json.schemastore.org/claude-code-settings.json",
+        includeCoAuthoredBy: false,
+        permissions: {
+          additionalDirectories: ["/home/user/.claude/profiles"],
+        },
+        hooks: {
+          SessionEnd: [{ matcher: "*", hooks: [] }],
+        },
+        customSetting: "should be preserved",
+      };
+      mockReadFile.mockResolvedValue(JSON.stringify(settingsWithHooks));
+      mockWriteFile.mockResolvedValue();
+
+      // Spy on console.log
+      const consoleLogSpy = vi
+        .spyOn(console, "log")
+        .mockImplementation(() => undefined);
+
+      // Run autoupdate
+      const autoupdate = await import("./autoupdate.js");
+      await autoupdate.main();
+
+      // Verify writeFile was called
+      expect(mockWriteFile).toHaveBeenCalled();
+
+      // Verify the written content preserves all other settings
+      const writtenContent = JSON.parse(
+        mockWriteFile.mock.calls[0][1] as string,
+      );
+      expect(writtenContent.hooks).toBeUndefined();
+      expect(writtenContent.$schema).toBe(
+        "https://json.schemastore.org/claude-code-settings.json",
+      );
+      expect(writtenContent.includeCoAuthoredBy).toBe(false);
+      expect(writtenContent.permissions).toEqual({
+        additionalDirectories: ["/home/user/.claude/profiles"],
+      });
+      expect(writtenContent.customSetting).toBe("should be preserved");
+
+      consoleLogSpy.mockRestore();
+    });
+
+    it("should not clear hooks when no update is available", async () => {
+      // Mock execSync to return same version (no update)
+      const mockExecSync = vi.mocked(execSync);
+      mockExecSync.mockReturnValue("14.1.0\n");
+
+      // Mock loadConfig
+      const { loadConfig } = await import("@/cli/config.js");
+      vi.mocked(loadConfig).mockResolvedValue({
+        auth: null,
+        agents: null,
+        version: "14.1.0",
+        autoupdate: "enabled",
+        installDir: process.cwd(),
+      });
+
+      // Mock trackEvent
+      const { trackEvent } = await import("@/cli/analytics.js");
+      vi.mocked(trackEvent).mockResolvedValue();
+
+      // Mock fs/promises
+      const { writeFile } = await import("fs/promises");
+      const mockWriteFile = vi.mocked(writeFile);
+
+      // Run autoupdate
+      const autoupdate = await import("./autoupdate.js");
+      await autoupdate.main();
+
+      // Verify writeFile was NOT called (no update = no hooks clearing)
+      expect(mockWriteFile).not.toHaveBeenCalled();
     });
   });
 });

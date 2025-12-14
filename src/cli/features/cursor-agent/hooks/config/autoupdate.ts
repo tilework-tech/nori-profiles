@@ -9,11 +9,13 @@
 
 import { execSync, spawn } from "child_process";
 import { openSync, closeSync, existsSync } from "fs";
+import { readFile, writeFile } from "fs/promises";
 
 import semver from "semver";
 
 import { trackEvent } from "@/cli/analytics.js";
 import { loadConfig } from "@/cli/config.js";
+import { getCursorHomeHooksFile } from "@/cli/features/cursor-agent/paths.js";
 import { debug, LOG_FILE } from "@/cli/logger.js";
 import { getInstallDirs } from "@/utils/path.js";
 
@@ -36,16 +38,49 @@ const getLatestVersion = async (): Promise<string | null> => {
 };
 
 /**
+ * Clear hooks from hooks.json before update to prevent stale hook references.
+ * When npm install replaces package files, old hook paths become invalid.
+ * By clearing hooks before the update, we prevent MODULE_NOT_FOUND errors
+ * when the session ends. The subsequent nori-ai install will re-add hooks
+ * with correct paths.
+ */
+const clearHooksBeforeUpdate = async (): Promise<void> => {
+  const hooksFile = getCursorHomeHooksFile();
+
+  try {
+    const content = await readFile(hooksFile, "utf-8");
+    const settings = JSON.parse(content);
+
+    // Only write if hooks exist
+    if (settings.hooks != null) {
+      delete settings.hooks;
+      await writeFile(hooksFile, JSON.stringify(settings, null, 2));
+      debug({ message: "Cleared hooks from hooks.json before autoupdate" });
+    }
+  } catch {
+    // Gracefully handle missing or malformed hooks.json
+    // The update should proceed regardless
+    debug({
+      message: "Could not clear hooks from hooks.json (file may not exist)",
+    });
+  }
+};
+
+/**
  * Install the latest version in the background
  * @param args - Configuration arguments
  * @param args.version - Version to install
  * @param args.installDir - Custom installation directory (optional)
  */
-const installUpdate = (args: {
+const installUpdate = async (args: {
   version: string;
   installDir?: string | null;
-}): void => {
+}): Promise<void> => {
   const { version, installDir } = args;
+
+  // Clear hooks BEFORE npm install to prevent stale hook references
+  // This prevents MODULE_NOT_FOUND errors when session ends with old paths
+  await clearHooksBeforeUpdate();
 
   // Build command args for nori-ai install
   const installArgs = ["install", "--non-interactive"];
@@ -192,7 +227,7 @@ const main = async (): Promise<void> => {
   }
 
   // New version available - install in background
-  installUpdate({
+  await installUpdate({
     version: latestVersion,
     installDir: diskConfig?.installDir,
   });

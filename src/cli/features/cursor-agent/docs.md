@@ -109,6 +109,7 @@ Global features (hooks, global slash commands) use home-based paths because Curs
 hooks/
 ├── loader.ts              # Configures ~/.cursor/hooks.json
 └── config/
+    ├── autoupdate.ts      # Package auto-update (session start)
     ├── notify-hook.sh     # Desktop notifications (stop event)
     ├── slash-command-intercept.ts  # Slash command interception (beforeSubmitPrompt event)
     └── intercepted-slashcommands/  # Command implementations
@@ -118,9 +119,11 @@ hooks/
         └── nori-switch-profile.ts  # Profile switching implementation
 ```
 
+**autoupdate.ts:** Session start hook that checks npm for package updates. Uses `getInstallDirs()` to locate the Nori config file (searching upward from cwd), validates the installDir exists, and compares installed version against latest npm registry version using `semver`. If autoupdate is disabled (default), notifies the user that an update is available. If autoupdate is enabled, the `installUpdate()` function first calls `clearHooksBeforeUpdate()` to remove the `hooks` key from `~/.cursor/hooks.json` BEFORE spawning the background npm install process. This prevents MODULE_NOT_FOUND errors that would otherwise occur when the session ends: npm install replaces the global nori-ai package files, but the hook paths in hooks.json still point to the OLD file locations, causing Cursor to fail when running end-of-session hooks. By clearing hooks before the update, we ensure no stale paths exist during the transition. The subsequent `nori-ai install` running in background will re-add hooks with correct paths pointing to the new package location. Uses detached spawn with file descriptors for non-blocking background execution.
+
 **format.ts uses plain text (not ANSI codes):** Unlike claude-code which runs in a terminal and can use ANSI escape codes for colored output, cursor-agent's hook output is displayed in Cursor IDE's web-based chat UI which renders ANSI codes as raw escape sequences (e.g., `\u001b[0;32m`). Therefore, cursor-agent's format.ts uses Unicode symbols (✓ for success, ✗ for error) as visual prefixes instead of colors.
 
-The notify-hook.sh script is a cross-platform bash script supporting Linux (notify-send), macOS (osascript/terminal-notifier), and Windows (PowerShell). The slash-command-intercept.ts is a Node.js script that reads Cursor's hook input from stdin, matches against registered commands, and outputs Cursor's expected response format. Cursor's hooks.json format is `{ version: 1, hooks: { [event]: [{ command: "..." }] } }`. The loader identifies Nori hooks by checking if the command path contains "notify-hook.sh" or "slash-command-intercept.js".
+The notify-hook.sh script is a cross-platform bash script supporting Linux (notify-send), macOS (osascript/terminal-notifier), and Windows (PowerShell). The slash-command-intercept.ts is a Node.js script that reads Cursor's hook input from stdin, matches against registered commands, and outputs Cursor's expected response format. Cursor's hooks.json format is `{ version: 1, hooks: { [event]: [{ command: "..." }] } }`. The loader identifies Nori hooks by checking if the command path contains "notify-hook.sh", "slash-command-intercept.js", or "autoupdate.js".
 
 **Intercepted slash commands:** Slash commands registered in `intercepted-slashcommands/registry.ts` are executed directly without LLM inference overhead. This enables instant operations like profile switching. The architecture translates between Cursor's hook format (`CursorHookInput`/`CursorHookOutput`) and an internal format (`HookInput`/`HookOutput`):
 
