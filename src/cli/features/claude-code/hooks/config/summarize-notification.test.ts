@@ -46,7 +46,7 @@ describe("summarize-notification hook", () => {
     // Verify output contains ANSI cursor up and clear codes
     expect(consoleErrorSpy).toHaveBeenCalled();
     const output = consoleErrorSpy.mock.calls[0][0];
-    expect(output).toMatch(/^\x1b\[\d+A\x1b\[J/); // Cursor up + clear to end
+    expect(output).toMatch(/^\r\x1b\[\d+A\x1b\[J/); // Carriage return + cursor up + clear to end
     expect(output).toContain(GREEN); // Green colored
     expect(output).toContain("Saving");
     expect(output).toContain("transcript");
@@ -79,7 +79,7 @@ describe("summarize-notification hook", () => {
     // Verify output contains ANSI codes and disabled message
     expect(consoleErrorSpy).toHaveBeenCalled();
     const output = consoleErrorSpy.mock.calls[0][0];
-    expect(output).toMatch(/^\x1b\[\d+A\x1b\[J/);
+    expect(output).toMatch(/^\r\x1b\[\d+A\x1b\[J/); // Carriage return + cursor up + clear to end
     expect(output).toContain(GREEN);
     expect(output).toContain("disabled");
   });
@@ -96,7 +96,7 @@ describe("summarize-notification hook", () => {
     // Verify output defaults to enabled message
     expect(consoleErrorSpy).toHaveBeenCalled();
     const output = consoleErrorSpy.mock.calls[0][0];
-    expect(output).toMatch(/^\x1b\[\d+A\x1b\[J/);
+    expect(output).toMatch(/^\r\x1b\[\d+A\x1b\[J/); // Carriage return + cursor up + clear to end
     expect(output).toContain("Saving");
   });
 
@@ -110,7 +110,7 @@ describe("summarize-notification hook", () => {
     // Should output red error message with ANSI codes
     expect(consoleErrorSpy).toHaveBeenCalled();
     const output = consoleErrorSpy.mock.calls[0][0];
-    expect(output).toMatch(/^\x1b\[\d+A\x1b\[J/);
+    expect(output).toMatch(/^\r\x1b\[\d+A\x1b\[J/); // Carriage return + cursor up + clear to end
     expect(output).toContain(RED);
     expect(output).toContain("Error");
   });
@@ -125,7 +125,7 @@ describe("summarize-notification hook", () => {
     // Should output red error message with ANSI codes
     expect(consoleErrorSpy).toHaveBeenCalled();
     const output = consoleErrorSpy.mock.calls[0][0];
-    expect(output).toMatch(/^\x1b\[\d+A\x1b\[J/);
+    expect(output).toMatch(/^\r\x1b\[\d+A\x1b\[J/); // Carriage return + cursor up + clear to end
     expect(output).toContain(RED);
   });
 });

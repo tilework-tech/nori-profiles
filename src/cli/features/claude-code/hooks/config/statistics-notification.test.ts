@@ -33,7 +33,7 @@ describe("statistics-notification hook", () => {
     // Verify output contains ANSI cursor up and clear codes
     expect(consoleErrorSpy).toHaveBeenCalled();
     const output = consoleErrorSpy.mock.calls[0][0];
-    expect(output).toMatch(/^\x1b\[\d+A\x1b\[J/); // Cursor up + clear to end
+    expect(output).toMatch(/^\r\x1b\[\d+A\x1b\[J/); // Carriage return + cursor up + clear to end
     expect(output).toContain(GREEN); // Green colored
     expect(output).toContain("Calculating");
     expect(output).toContain("statistics");

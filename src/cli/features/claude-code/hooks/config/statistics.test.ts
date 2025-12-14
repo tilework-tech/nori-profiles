@@ -408,7 +408,7 @@ describe("statistics hook script behavior", () => {
       // Verify output contains ANSI cursor up and clear codes
       expect(consoleErrorSpy).toHaveBeenCalled();
       const output = consoleErrorSpy.mock.calls[0][0];
-      expect(output).toMatch(/^\x1b\[\d+A\x1b\[J/); // Cursor up + clear to end
+      expect(output).toMatch(/^\r\x1b\[\d+A\x1b\[J/); // Carriage return + cursor up + clear to end
     } finally {
       Object.defineProperty(process, "stdin", {
         value: originalStdin,
@@ -443,6 +443,51 @@ describe("statistics hook script behavior", () => {
       await main();
 
       // Verify exit code 2 is called
+      expect(process.exit).toHaveBeenCalledWith(2);
+    } finally {
+      Object.defineProperty(process, "stdin", {
+        value: originalStdin,
+        writable: true,
+        configurable: true,
+      });
+    }
+  });
+
+  it("should output 'No statistics for this session' when no user messages", async () => {
+    const { main } = await import("./statistics.js");
+
+    // Transcript with no user messages (only assistant messages)
+    // Must be multi-line NDJSON to trigger the fallback parsing path
+    const transcript = `{"type":"assistant","message":{"role":"assistant","content":"Hello"}}
+{"type":"assistant","message":{"role":"assistant","content":"More stuff"}}`;
+
+    const { Readable } = await import("stream");
+    const mockStdin = new Readable({
+      read() {
+        this.push(Buffer.from(transcript));
+        this.push(null);
+      },
+    });
+
+    originalStdin = process.stdin;
+    Object.defineProperty(process, "stdin", {
+      value: mockStdin,
+      writable: true,
+      configurable: true,
+    });
+
+    try {
+      await main();
+
+      // Verify that a message was output
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      const output = consoleErrorSpy.mock.calls[0][0];
+
+      // Should contain the "no statistics" message
+      expect(output).toContain("No");
+      expect(output).toContain("statistics");
+
+      // Should exit with code 2
       expect(process.exit).toHaveBeenCalledWith(2);
     } finally {
       Object.defineProperty(process, "stdin", {

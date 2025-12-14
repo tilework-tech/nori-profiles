@@ -41,7 +41,7 @@ export const main = async (): Promise<void> => {
 
   const hookPath = getHookPath();
   const message = formatWithLineClear({
-    message: "Calculating Nori statistics... (Ctrl-C to exit early)\n\n",
+    message: "Calculating Nori statistics... (Ctrl-C to exit early)\n",
     hookPath,
     isSuccess: true,
   });

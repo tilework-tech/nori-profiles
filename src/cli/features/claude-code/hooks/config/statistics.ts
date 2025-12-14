@@ -418,9 +418,18 @@ export const main = async (): Promise<void> => {
   // Calculate statistics
   const messages = countMessages({ content: transcriptContent });
 
-  // Skip statistics for empty sessions (no user messages)
+  // For empty sessions (no user messages), output a brief message
   if (messages.user === 0) {
-    debug({ message: "No user messages found, skipping statistics" });
+    debug({ message: "No user messages found" });
+    const hookPath = getHookPath();
+    console.error(
+      formatWithLineClear({
+        message: "No statistics for this session.\n",
+        hookPath,
+        isSuccess: true,
+      }),
+    );
+    process.exit(2);
     return;
   }
 
@@ -443,7 +452,7 @@ export const main = async (): Promise<void> => {
   const hookPath = getHookPath();
   console.error(
     formatWithLineClear({
-      message: `\n${formattedStats}\n`,
+      message: `${formattedStats}\n`,
       hookPath,
       isSuccess: true,
     }),

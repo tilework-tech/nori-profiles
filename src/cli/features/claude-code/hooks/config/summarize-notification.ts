@@ -17,7 +17,7 @@ import { getInstallDirs } from "@/utils/path.js";
 
 import { formatWithLineClear } from "./intercepted-slashcommands/format.js";
 
-const ERROR_MESSAGE = `Error saving to Nori Watchtower. Check ${LOG_FILE} for details.\n\n`;
+const ERROR_MESSAGE = `Error saving to Nori Watchtower. Check ${LOG_FILE} for details.\n`;
 
 /**
  * Get the hook script path for ANSI line clearing calculations
@@ -77,14 +77,14 @@ export const main = async (): Promise<void> => {
   if (diskConfig?.sendSessionTranscript === "disabled") {
     message = formatWithLineClear({
       message:
-        "Session transcripts disabled. Use /nori-toggle-session-transcripts to enable...\n\n",
+        "Session transcripts disabled. Use /nori-toggle-session-transcripts to enable...\n",
       hookPath,
       isSuccess: true,
     });
   } else {
     // Default to enabled behavior (backward compatible)
     message = formatWithLineClear({
-      message: "Saving transcript to nori...\n\n",
+      message: "Saving transcript to nori...\n",
       hookPath,
       isSuccess: true,
     });

@@ -244,8 +244,8 @@ describe("formatWithLineClear", () => {
       isSuccess: true,
     });
 
-    // Should start with cursor up 1 line + clear to end
-    expect(result).toMatch(/^\x1b\[1A\x1b\[J/);
+    // Should start with carriage return + cursor up 1 line + clear to end
+    expect(result).toMatch(/^\r\x1b\[1A\x1b\[J/);
   });
 
   it("should prepend ANSI codes to clear 2 lines for medium prefix", () => {
@@ -257,8 +257,8 @@ describe("formatWithLineClear", () => {
       isSuccess: true,
     });
 
-    // Should start with cursor up 2 lines + clear to end
-    expect(result).toMatch(/^\x1b\[2A\x1b\[J/);
+    // Should start with carriage return + cursor up 2 lines + clear to end
+    expect(result).toMatch(/^\r\x1b\[2A\x1b\[J/);
   });
 
   it("should apply green coloring for success messages", () => {
@@ -310,7 +310,7 @@ describe("formatWithLineClear", () => {
       isSuccess: true,
     });
 
-    // Should still have ANSI clear codes at start
-    expect(result).toMatch(/^\x1b\[\d+A\x1b\[J/);
+    // Should still have ANSI clear codes at start (carriage return + cursor up + clear)
+    expect(result).toMatch(/^\r\x1b\[\d+A\x1b\[J/);
   });
 });

@@ -140,8 +140,11 @@ export const formatWithLineClear = (args: {
   // Calculate how many lines to clear
   const linesToClear = calculatePrefixLines({ hookPath, terminalWidth });
 
-  // ANSI codes: \x1b[{n}A = cursor up n lines, \x1b[J = clear from cursor to end of screen
-  const clearCodes = `\x1b[${linesToClear}A\x1b[J`;
+  // ANSI codes:
+  // \r = carriage return (move to column 0)
+  // \x1b[{n}A = cursor up n lines
+  // \x1b[J = clear from cursor to end of screen
+  const clearCodes = `\r\x1b[${linesToClear}A\x1b[J`;
 
   // Apply color formatting
   const coloredMessage = isSuccess
