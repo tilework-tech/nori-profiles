@@ -136,6 +136,39 @@ cp src/cli/features/cursor-agent/slashcommands/config/*.md build/src/cli/feature
 chmod +x build/src/cli/features/claude-code/hooks/config/*.sh 2>/dev/null || true
 chmod +x build/src/cli/features/claude-code/statusline/config/*.sh 2>/dev/null || true
 
+# ============================================================================
+# Legacy Hook Compatibility Layer
+# ============================================================================
+# Copies hook scripts to the legacy location (features/hooks/config/) for
+# backwards compatibility during auto-updates. When users auto-update from
+# older versions (e.g., 18.x -> 19.x), Claude Code caches hook paths at session
+# start. The old paths point to features/hooks/config/ but new versions use
+# features/claude-code/hooks/config/. By copying hooks to both locations, old
+# sessions can still find working hooks when they end after an update.
+#
+# This can be removed after a few major versions when most users have updated.
+echo -e "${BLUE}[6b/7] Creating legacy hook compatibility layer...${NC}"
+
+mkdir -p build/src/cli/features/hooks/config
+
+# Copy all bundled hook scripts to legacy location
+cp build/src/cli/features/claude-code/hooks/config/summarize.js build/src/cli/features/hooks/config/ 2>/dev/null || true
+cp build/src/cli/features/claude-code/hooks/config/summarize-notification.js build/src/cli/features/hooks/config/ 2>/dev/null || true
+cp build/src/cli/features/claude-code/hooks/config/statistics.js build/src/cli/features/hooks/config/ 2>/dev/null || true
+cp build/src/cli/features/claude-code/hooks/config/statistics-notification.js build/src/cli/features/hooks/config/ 2>/dev/null || true
+cp build/src/cli/features/claude-code/hooks/config/autoupdate.js build/src/cli/features/hooks/config/ 2>/dev/null || true
+cp build/src/cli/features/claude-code/hooks/config/nested-install-warning.js build/src/cli/features/hooks/config/ 2>/dev/null || true
+cp build/src/cli/features/claude-code/hooks/config/context-usage-warning.js build/src/cli/features/hooks/config/ 2>/dev/null || true
+cp build/src/cli/features/claude-code/hooks/config/slash-command-intercept.js build/src/cli/features/hooks/config/ 2>/dev/null || true
+cp build/src/cli/features/claude-code/hooks/config/commit-author.js build/src/cli/features/hooks/config/ 2>/dev/null || true
+cp build/src/cli/features/claude-code/hooks/config/notify-hook.sh build/src/cli/features/hooks/config/ 2>/dev/null || true
+
+# Make legacy scripts executable
+chmod +x build/src/cli/features/hooks/config/*.js 2>/dev/null || true
+chmod +x build/src/cli/features/hooks/config/*.sh 2>/dev/null || true
+
+echo -e "${GREEN}✓ Legacy hook compatibility layer created${NC}"
+
 echo -e "${GREEN}✓ Configuration files copied${NC}"
 echo ""
 
