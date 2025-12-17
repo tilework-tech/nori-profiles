@@ -174,7 +174,8 @@ export const getRegistryAuth = (args: {
         return {
           registryUrl: derivedRegistryUrl,
           username: config.auth.username,
-          password: config.auth.password ?? "",
+          password: config.auth.password ?? null,
+          refreshToken: config.auth.refreshToken ?? null,
         };
       }
     }
@@ -187,7 +188,8 @@ export const getRegistryAuth = (args: {
       return {
         registryUrl: normalizedSearchUrl,
         username: config.auth.username,
-        password: config.auth.password ?? "",
+        password: config.auth.password ?? null,
+        refreshToken: config.auth.refreshToken ?? null,
       };
     }
   }
