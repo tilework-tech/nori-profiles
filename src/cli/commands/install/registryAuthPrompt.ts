@@ -101,7 +101,7 @@ export const promptRegistryAuths = async (args: {
     while (true) {
       const input = await promptUser({
         prompt:
-          "Organization ID (e.g., 'mycompany') or full URL for local dev: ",
+          "Organization ID (the prefix to your URL, e.g., 'mycompany' for https://mycompany.tilework.tech): ",
       });
 
       const result = parseOrgIdOrUrl({ input });

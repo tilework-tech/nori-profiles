@@ -243,7 +243,7 @@ export const generatePromptConfig = async (args: {
     while (organizationUrl == null) {
       const orgInput = await promptUser({
         prompt:
-          "Organization ID (e.g., 'tilework') or full URL for local dev: ",
+          "Organization ID (the prefix to your URL, e.g., 'mycompany' for https://mycompany.tilework.tech): ",
       });
 
       if (!orgInput) {
