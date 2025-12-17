@@ -216,9 +216,17 @@ export const generatePromptConfig = async (args: {
 
   // Prompt for credentials
   info({
+    message: "If you have access to Nori Web, enter your email address below.",
+  });
+  newline();
+  info({
     message: wrapText({
-      text: "Nori's backend service enables shared knowledge features - search and recall past solutions across your team, save learnings for future sessions, and server-side documentation with versioning. If you have Nori credentials (you should have received them from Josh or Amol), enter your email to enable these features. Otherwise, press enter to continue with local-only features.",
+      text: "Nori Web provides a context engine for enhancing your coding agent with additional knowledge and enables sharing custom profiles across your team.",
     }),
+  });
+  newline();
+  info({
+    message: "Learn more at usenori.ai",
   });
   newline();
 
@@ -294,23 +302,76 @@ export const generatePromptConfig = async (args: {
     process.exit(1);
   }
 
-  // Display profiles
+  // Display profiles with categorization
   info({
     message: wrapText({
-      text: "Please select a profile. Each profile contains a complete configuration with skills, subagents, and commands tailored for different use cases.",
+      text: "Nori profiles contain a complete configuration for customizing your coding agent, including a CLAUDE/AGENT.md, skills, subagents, and commands. We recommend starting with:",
     }),
   });
   newline();
 
-  profiles.forEach((p, i) => {
-    const number = brightCyan({ text: `${i + 1}.` });
-    const name = boldWhite({ text: p.name });
-    const description = gray({ text: p.description });
+  // Categorize profiles
+  const knownProfiles = ["senior-swe", "amol", "product-manager"];
+  const recommendedProfile = profiles.find((p) => p.name === "senior-swe");
+  const additionalProfiles = profiles.filter(
+    (p) => p.name === "amol" || p.name === "product-manager",
+  );
+  const customProfiles = profiles.filter(
+    (p) => !knownProfiles.includes(p.name),
+  );
 
+  let profileIndex = 1;
+
+  // Display recommended profile (senior-swe)
+  if (recommendedProfile) {
+    const number = brightCyan({ text: `${profileIndex}.` });
+    const name = boldWhite({ text: recommendedProfile.name });
+    const description = gray({ text: recommendedProfile.description });
     raw({ message: `${number} ${name}` });
     raw({ message: `   ${description}` });
     newline();
+    profileIndex++;
+  }
+
+  // Display additional profiles (amol, product-manager)
+  if (additionalProfiles.length > 0) {
+    info({ message: "Two additional profiles are:" });
+    newline();
+    additionalProfiles.forEach((p) => {
+      const number = brightCyan({ text: `${profileIndex}.` });
+      const name = boldWhite({ text: p.name });
+      const description = gray({ text: p.description });
+      raw({ message: `${number} ${name}` });
+      raw({ message: `   ${description}` });
+      newline();
+      profileIndex++;
+    });
+  }
+
+  // Display custom profiles
+  if (customProfiles.length > 0) {
+    info({
+      message:
+        "The following profiles were found in your existing Nori profiles folder:",
+    });
+    newline();
+    customProfiles.forEach((p) => {
+      const number = brightCyan({ text: `${profileIndex}.` });
+      const name = boldWhite({ text: p.name });
+      const description = gray({ text: p.description });
+      raw({ message: `${number} ${name}` });
+      raw({ message: `   ${description}` });
+      newline();
+      profileIndex++;
+    });
+  }
+
+  info({
+    message: wrapText({
+      text: "If you would like to customize a profile, you can prompt your coding agent to do so in session or use the slash command /nori-create-profile.",
+    }),
   });
+  newline();
 
   // Loop until valid selection
   let selectedProfileName: string;
