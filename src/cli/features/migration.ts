@@ -5,6 +5,9 @@
  * Migrations are applied in semver order during installation.
  */
 
+import * as fs from "fs/promises";
+import * as path from "path";
+
 import semver from "semver";
 
 import type { Config } from "@/cli/config.js";
@@ -104,10 +107,44 @@ const migration_19_0_0: Migration = {
 };
 
 /**
+ * Migration 20.0.0: Move profiles from .claude/profiles to .nori/profiles
+ *
+ * This migration cleans up the old .claude/profiles directory.
+ * The new profiles are created by profilesLoader in .nori/profiles.
+ */
+const migration_20_0_0: Migration = {
+  version: "20.0.0",
+  name: "move-profiles-to-nori-directory",
+  migrate: async (args: {
+    config: Record<string, unknown>;
+    installDir: string;
+  }): Promise<Record<string, unknown>> => {
+    const { config, installDir } = args;
+    const result = { ...config };
+
+    // Remove old .claude/profiles directory if it exists
+    const oldProfilesDir = path.join(installDir, ".claude", "profiles");
+    try {
+      await fs.rm(oldProfilesDir, { recursive: true, force: true });
+    } catch {
+      // Ignore errors - directory might not exist
+    }
+
+    // Update version
+    result.version = "20.0.0";
+
+    return result;
+  },
+};
+
+/**
  * Ordered list of migrations
  * Each migration transforms config from the previous version to its version
  */
-export const migrations: Array<Migration> = [migration_19_0_0];
+export const migrations: Array<Migration> = [
+  migration_19_0_0,
+  migration_20_0_0,
+];
 
 /**
  * Apply all applicable migrations to a config
