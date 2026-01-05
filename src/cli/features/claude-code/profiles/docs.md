@@ -16,7 +16,24 @@ The profiles loader executes FIRST in both interactive and non-interactive insta
 
 **Built-in Profile Metadata**: All built-in profiles include `"builtin": true` in their profile.json files. This field is used by the uninstall process (@/src/cli/features/claude-code/profiles/loader.ts uninstallProfiles function) to distinguish built-in profiles from custom user profiles. During uninstall, only profiles with `"builtin": true` are removed. Profiles without this field (or with `"builtin": false`) are treated as custom and preserved.
 
-**Built-in Profiles**: Three profiles ship with the package at @/src/cli/features/claude-code/profiles/config/: `senior-swe` (co-pilot with high confirmation), `amol` (full autonomy with frequent commits), and `product-manager` (full autonomy for non-technical users). The default profile fallback `senior-swe` (from @/src/cli/config.ts getDefaultProfile()) is only used in interactive mode when an existing config has no profile field. Non-interactive installs require explicit `--profile` flag when no existing config is present.
+**Built-in Profiles**: Several profiles ship with the package at @/src/cli/features/claude-code/profiles/config/:
+- `senior-swe` - Co-pilot with high confirmation, the default profile
+- `amol` - Full autonomy with frequent commits
+- `product-manager` - Full autonomy for non-technical users
+- `none` - Minimal profile with only base mixin and empty CLAUDE.md
+- `onboarding-wizard` - Meta-profile that creates personalized profiles for first-time users
+
+The default profile fallback `senior-swe` (from @/src/cli/config.ts getDefaultProfile()) is only used in interactive mode when an existing config has no profile field. Non-interactive installs require explicit `--profile` flag when no existing config is present.
+
+**Onboarding Wizard Profile**: The `onboarding-wizard` is a "meta-profile" whose purpose is to create other profiles. It operates as an Installation Wizard with special instructions that bypass normal workflow (no git worktrees, no branches). The wizard asks users about:
+1. Profile name
+2. Autonomy level (high/moderate/pair programming)
+3. Git workflow (worktrees/branches/ask each time)
+4. Testing philosophy (strict TDD/preferred/minimal)
+5. Documentation preferences (always/on request/none)
+6. Communication tone (direct/balanced/supportive)
+
+After collecting preferences, it generates a customized profile in `~/.claude/profiles/<profile-name>/` with a tailored CLAUDE.md based on the user's answers. Uses the same mixins as `senior-swe` (base, docs, swe). After creating a custom profile, users switch to it using `/nori-switch-profile`.
 
 **Installation Flow**: The `installProfiles()` function in @/src/cli/features/claude-code/profiles/loader.ts reads profile directories from config/, loads profile.json metadata, dynamically injects the `paid` mixin if the user has auth credentials (checked via `isPaidInstall({ config })` from @/src/cli/config.ts), then composes the profile by merging content from all mixins in alphabetical order. Mixins are located in `config/_mixins/` with names like `_base`, `_docs`, `_swe`, `_paid`. Directories are merged (union of contents) while files use last-writer-wins. Profile-specific content (CLAUDE.md) is overlaid last. Built-in profiles are always overwritten during installation to receive updates. Custom profiles are preserved. The composed profiles are written to `~/.nori/profiles/`, then the profiles loader also configures permissions for this directory in `~/.claude/settings.json`.
 
@@ -161,12 +178,21 @@ All feature loaders (claudemd, skills, slashcommands, subagents) read from `~/.n
    - Overwrites built-in profiles to ensure they're up-to-date
    - Leaves custom profiles untouched
 
-2. **User selects profile**
+2. **First-time install detection** (see @/src/cli/commands/install/install.ts generatePromptConfig)
+
+   - If no existing `.nori-config.json` exists, this is a first-time install
+   - User is offered two choices:
+     - Option 1: Select a pre-built profile (continues to standard profile selection)
+     - Option 2: Create a personalized profile via the onboarding wizard
+   - If user chooses the wizard, the `onboarding-wizard` profile is automatically selected
+   - The wizard runs on next Claude Code session, asking questions and generating a custom profile
+
+3. **User selects profile** (for existing installs or if user chose "pre-built" in step 2)
 
    - Reads available profiles from `~/.nori/profiles/`
    - Shows both built-in and custom profiles
 
-3. **Feature loaders run**
+4. **Feature loaders run**
    - Read profile configuration from `~/.nori/profiles/${selectedProfile}/`
    - Install CLAUDE.md, skills, slashcommands, subagents to `~/.claude/` from that profile
 
@@ -193,7 +219,7 @@ When you run `npx nori-ai@latest switch-profile <name>`:
 The `validate()` function checks:
 
 - `~/.nori/profiles/` directory exists
-- Required built-in profiles (`senior-swe`, `amol`, `product-manager`) are present
+- Required built-in profiles (`senior-swe`, `amol`, `product-manager`, `documenter`, `none`) are present. Note: `onboarding-wizard` is a meta-profile and is not required for validation.
 - Run with `npx nori-ai@latest check`
 
 ## Uninstallation
