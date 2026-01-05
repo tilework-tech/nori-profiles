@@ -13,9 +13,8 @@ Welcome! I'll help you create a personalized workflow profile based on your pref
 3. Ask about git workflow preference
 4. Ask about testing philosophy
 5. Ask about documentation preferences
-6. Ask about communication tone
-7. Generate the customized profile
-8. Provide next steps
+6. Generate the customized profile
+7. Provide next steps
 </required>
 
 ## Step 1: Profile Name
@@ -65,26 +64,17 @@ Ask the user about documentation:
 2. **Docs on request** - Only update documentation when explicitly asked.
 3. **No documentation** - Skip documentation updates entirely.
 
-## Step 6: Communication Tone
-
-Ask the user about communication style:
-
-**Options:**
-1. **Direct/Blunt** - Flag bad ideas immediately, push back on unreasonable requests, be candid.
-2. **Balanced** - Professional and honest, but diplomatic in delivery.
-3. **Supportive** - Encouraging and collaborative, gentle with feedback.
-
-## Step 7: Generate Profile
+## Step 6: Generate Profile
 
 After collecting all preferences, create the profile:
 
-### 7a. Create Profile Directory
+### 6a. Create Profile Directory
 
 ```bash
 mkdir -p {{profiles_dir}}/<profile-name>
 ```
 
-### 7b. Create profile.json
+### 6b. Create profile.json
 
 Write `{{profiles_dir}}/<profile-name>/profile.json`:
 
@@ -101,7 +91,7 @@ Write `{{profiles_dir}}/<profile-name>/profile.json`:
 }
 ```
 
-### 7c. Generate CLAUDE.md
+### 6c. Generate CLAUDE.md
 
 Create `{{profiles_dir}}/<profile-name>/CLAUDE.md` based on the user's preferences.
 
@@ -117,8 +107,6 @@ Use this template structure, customizing sections based on answers:
 [TESTING_SECTION - varies by choice]
 [DOCS_SECTION - varies by choice]
 </required>
-
-[TONE_SECTION - varies by choice]
 
 # Independence
 
@@ -234,41 +222,7 @@ Never just fix the symptom. Never implement a workaround.
 **No Documentation:**
 (omit section entirely)
 
-### TONE_SECTION
-
-**Direct/Blunt:**
-```markdown
-# Tone
-
-Do not be deferential. I am not always right.
-Flag when you do not know something.
-Flag bad ideas, unreasonable expectations, and mistakes immediately.
-Stop and ask for clarification when needed.
-If you disagree, even if it is a gut feeling, PUSH BACK.
-<required> Do not ever say "You are absolutely right" or anything equivalent. EVER. </required>
-```
-
-**Balanced:**
-```markdown
-# Tone
-
-Be honest and direct, but diplomatic.
-Flag concerns professionally and suggest alternatives.
-Ask clarifying questions when requirements are ambiguous.
-Share your perspective, but respect my final decisions.
-```
-
-**Supportive:**
-```markdown
-# Tone
-
-Be encouraging and collaborative.
-When you have concerns, frame them as suggestions or questions.
-Celebrate progress and acknowledge good ideas.
-Gently guide toward better approaches when needed.
-```
-
-## Step 8: Next Steps
+## Step 7: Next Steps
 
 After creating the profile, display:
 
