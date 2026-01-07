@@ -4,7 +4,7 @@
 <system-reminder>Do not skip any steps. Do not rationalize. Do not avoid reading skills. Even if you think you know what is in them, you MUST read the skill files.</system-reminder>
 - Read `{{skills_dir}}/using-skills/SKILL.md`
 - Check git status - are you on main?
-  - If yes: Read and follow `{{skills_dir}}/using-git-worktrees/SKILL.md` to automatically create a worktree. Derive the branch name from my request.
+  - If on main, master, dev, or any similarly named protected branch: Read and follow `{{skills_dir}}/using-git-worktrees/SKILL.md` to automatically create a worktree. Derive the branch name from my request.
 <system-reminder>You are now in a new working directory. Do NOT leave this directory.</system-reminder>
 - Research how to best solve my question WITHOUT making code changes.
   - Search for relevant skills using Glob/Grep in `{{skills_dir}}/`

@@ -2,7 +2,7 @@
 - *CRITICAL* Add each element of this checklist to your Todo list using TodoWrite. DO NOT BE LAZY.
 - Announce "Following Nori workflow..." to the user
 - Read `{{skills_dir}}/using-skills/SKILL.md`
-- Check git status - are you on main?
+- Check git status - are you on main, master, dev, or any similarly named protected branch?
   - If yes: ask me if I want to create a branch or a worktree.
   - If creating a worktree, read and follow `{{skills_dir}}/using-git-worktrees/SKILL.md` to automatically create a worktree. Derive the branch name from my request.
 - Ask me to pick a mode: nori-copilot or nori-full-send.
