@@ -58,7 +58,7 @@ Define precise scopes of behavior for your development tasks. Your preferences f
 Run
 
 ```
-/nori-create-profile
+/nori-create-skillset
 ```
 
 Claude will guide you through:
@@ -86,20 +86,12 @@ Claude will guide you through:
    - Any repeating instructions
    ```
 
-3. Link to mixins (optional):
+3. Activate your skillset:
    ```bash
-   # Link to the SWE mixin for engineering workflows
-   ln -s ~/.claude/_mixins/_swe ~/.claude/profiles/my-skillset/_swe
+   nori-ai switch-skillset my-skillset
    ```
 
-   Available mixins: `_swe` (engineering), `_pm` (product), `_doc` (documentation)
-
-4. Activate your skillset:
-   ```bash
-   nori-ai switch-profile my-skillset
-   ```
-
-   Or use `/nori-switch-profile` during a conversation.
+   Or use `/nori-switch-skillset` during a conversation.
 
 **Skillset structure:**
 
@@ -124,11 +116,17 @@ _Enhances Claude Code with improved visibility and automations._
 - **Specialized subagents**: codebase-locator, codebase-analyzer, codebase-pattern-finder, web-search-researcher
 - **Local noridocs**: Automatic documentation with change-documenter and initial-documenter subagents
 
-### Nori-registry (Paid)
+### nori-registry (Paid)
 
-_Web app for uploading, discovering, and downloading custom coding agents across a team._
+_Package manager for uploading, discovering, and downloading custom coding agents across a team._
 
 Upload your custom agents to a shared registry where your team can discover and download them. Search by name, tags, or description. Download agents instantly with a single command. Makes it easy to share specialized agents across your organization.
+
+### nori-watchtower (Paid)
+
+_Transcript search server for providing institutional and organizational memory to agents across a team._
+
+Automatically store session transcripts from every engineer on your team. Make them searchable and accessible to your team, and your agents. Agents can use watchtower to source extra documentation and context that may not be present in the codebase. You can use watchtower to get insight into how your team is functioning.
 
 ## Commands
 
