@@ -5,6 +5,13 @@ New releases are prepended below this header.
 
 ---
 
+## v19.1.2 (2026-01-08)
+
+### Documentation
+- Update release notes for v19.1.1 (b334bc6)
+
+---
+
 ## v19.1.1 (2026-01-08)
 
 ### Features
