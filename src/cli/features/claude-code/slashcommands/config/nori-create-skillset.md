@@ -1,9 +1,7 @@
 ---
-description: Alias for /nori-create-skillset - Create a new custom skillset
+description: Create a new custom skillset by cloning an existing skillset
 allowed-tools: Bash(cat:*), Bash(ls:*), Bash(cp:*), Bash(mkdir:*), Read({{profiles_dir}}/**), Write({{profiles_dir}}/**/profile.json:*)
 ---
-
-This command is an alias for `/nori-create-skillset`. Please use `/nori-create-skillset` instead.
 
 Create a new custom Nori skillset by cloning an existing skillset and customizing it.
 

@@ -1,6 +1,6 @@
 /**
- * Intercepted slash command for switching profiles
- * Handles /nori-switch-profile commands for instant profile switching
+ * Intercepted slash command for switching skillsets
+ * Handles /nori-switch-skillset and /nori-switch-profile (alias) commands
  */
 
 import { execSync } from "child_process";
@@ -31,12 +31,13 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
   const { input } = args;
   const { prompt, cwd } = input;
 
-  // Extract profile name if provided (matcher already validated the pattern)
+  // Extract skillset name if provided (matcher already validated the pattern)
+  // Matches both /nori-switch-skillset and /nori-switch-profile (alias)
   const trimmedPrompt = prompt.trim();
-  const profileMatch = trimmedPrompt.match(
-    /^\/nori-switch-profile(?:\s+([a-z0-9-]+))?\s*$/i,
+  const skillsetMatch = trimmedPrompt.match(
+    /^\/nori-switch-(?:skillset|profile)(?:\s+([a-z0-9-]+))?\s*$/i,
   );
-  const profileName = profileMatch?.[1] ?? null;
+  const profileName = skillsetMatch?.[1] ?? null;
 
   // Find installation directory
   const allInstallations = getInstallDirs({ currentDir: cwd });
@@ -51,7 +52,7 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
   const installDir = allInstallations[0]; // Use closest installation
   const agent = AgentRegistry.getInstance().get({ name: "claude-code" });
 
-  // List available profiles using agent method
+  // List available skillsets using agent method
   const profiles = await agent.listProfiles({ installDir });
 
   if (profiles.length === 0) {
@@ -59,39 +60,39 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
     return {
       decision: "block",
       reason: formatError({
-        message: `No profiles found in ${profilesDir}.\n\nRun 'nori-ai install' to install profiles.`,
+        message: `No skillsets found in ${profilesDir}.\n\nRun 'nori-ai install' to install skillsets.`,
       }),
     };
   }
 
-  // If no profile name provided, show available profiles
+  // If no skillset name provided, show available skillsets
   if (profileName == null) {
     return {
       decision: "block",
       reason: formatSuccess({
-        message: `Available profiles: ${profiles.join(", ")}\n\nUsage: /nori-switch-profile <profile-name>`,
+        message: `Available skillsets: ${profiles.join(", ")}\n\nUsage: /nori-switch-skillset <skillset-name>`,
       }),
     };
   }
 
-  // Check if profile exists
+  // Check if skillset exists
   if (!profiles.includes(profileName)) {
     return {
       decision: "block",
       reason: formatError({
-        message: `Profile "${profileName}" not found.\n\nAvailable profiles: ${profiles.join(", ")}`,
+        message: `Skillset "${profileName}" not found.\n\nAvailable skillsets: ${profiles.join(", ")}`,
       }),
     };
   }
 
-  // Switch to the profile using agent method
+  // Switch to the skillset using agent method
   // Enable silent mode to prevent console output from corrupting JSON response.
   // agent.switchProfile() calls success() and info() which would pollute stdout.
   setSilentMode({ silent: true });
   try {
     await agent.switchProfile({ installDir, profileName });
 
-    // Run install to apply profile changes via subprocess.
+    // Run install to apply skillset changes via subprocess.
     //
     // IMPORTANT: We use subprocess (execSync) instead of dynamic import because
     // this hook script is bundled by esbuild. When bundled, __dirname resolves
@@ -105,7 +106,7 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
       { stdio: ["ignore", "ignore", "ignore"] },
     );
 
-    // Read profile description if available
+    // Read skillset description if available
     let profileDescription = "";
     try {
       const profilesDir = getNoriProfilesDir({ installDir });
@@ -127,7 +128,7 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
     return {
       decision: "block",
       reason: formatSuccess({
-        message: `Profile switched to "${profileName}"${profileDescription ? `: ${profileDescription}` : ""}.\n\nRestart Claude Code to apply the changes.`,
+        message: `Skillset switched to "${profileName}"${profileDescription ? `: ${profileDescription}` : ""}.\n\nRestart Claude Code to apply the changes.`,
       }),
     };
   } catch (err) {
@@ -135,7 +136,7 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
     return {
       decision: "block",
       reason: formatError({
-        message: `Failed to switch profile: ${errorMessage}`,
+        message: `Failed to switch skillset: ${errorMessage}`,
       }),
     };
   } finally {
@@ -145,10 +146,13 @@ const run = async (args: { input: HookInput }): Promise<HookOutput | null> => {
 };
 
 /**
- * nori-switch-profile intercepted slash command
+ * nori-switch-skillset intercepted slash command
+ * Also matches /nori-switch-profile as an alias for backward compatibility
  */
 export const noriSwitchProfile: InterceptedSlashCommand = {
   matchers: [
+    "^\\/nori-switch-skillset\\s*$",
+    "^\\/nori-switch-skillset\\s+[a-z0-9-]+\\s*$",
     "^\\/nori-switch-profile\\s*$",
     "^\\/nori-switch-profile\\s+[a-z0-9-]+\\s*$",
   ],

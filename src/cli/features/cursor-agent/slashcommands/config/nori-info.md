@@ -1,14 +1,14 @@
 ---
-description: Display information about Nori Profiles features and capabilities for Cursor
+description: Display information about Nori Skillsets features and capabilities for Cursor
 ---
 
-Please read the following information about Nori Profiles for Cursor and provide a clear, concise summary to me. After your summary, state: "I loaded the nori documentation for Cursor. You can ask me for more help about how to use nori if you would like."
+Please read the following information about Nori Skillsets for Cursor and provide a clear, concise summary to me. After your summary, state: "I loaded the nori documentation for Cursor. You can ask me for more help about how to use nori if you would like."
 
 Suggest helpful follow-up questions like:
 
-- "How do I switch between profiles?"
+- "How do I switch between skillsets?"
 - "What rules are available?"
-- "How do I create a custom profile?"
+- "How do I create a custom skillset?"
 
 ---
 
@@ -16,9 +16,9 @@ Suggest helpful follow-up questions like:
 
 Nori enhances Cursor with better context management and specialized workflows through the AGENTS.md and rules system.
 
-## 1. Profile System
+## 1. Skillset System
 
-Profiles control Cursor's behavior through AGENTS.md instructions and rules.
+Skillsets control Cursor's behavior through AGENTS.md instructions and rules.
 
 ### 1.1 amol (Default)
 
@@ -27,11 +27,11 @@ Profiles control Cursor's behavior through AGENTS.md instructions and rules.
 - **Commits/PRs:** Autonomous commits and PR creation
 - **Best for:** Experienced users who want maximum productivity
 
-### 1.2 Profile Management
+### 1.2 Skillset Management
 
-- **Switch profiles:** `nori-ai switch-profile --agent cursor-agent`
-- **Custom profiles:** Create your own in `{{profiles_dir}}/`
-- **Source of truth:** All profiles stored in `{{profiles_dir}}/`
+- **Switch skillsets:** `nori-ai switch-skillset --agent cursor-agent`
+- **Custom skillsets:** Create your own in `{{profiles_dir}}/`
+- **Source of truth:** All skillsets stored in `{{profiles_dir}}/`
 
 ## 2. Rules System
 
@@ -45,12 +45,12 @@ Rules are loaded into the AGENTS.md managed block during installation.
 
 ## 3. AGENTS.md Behavioral Instructions
 
-Profile-specific instructions that guide Cursor's behavior.
+Skillset-specific instructions that guide Cursor's behavior.
 
 ### 3.1 Features
 
 - **Managed block pattern** - Safe updates without destroying user content
-- **Profile-specific workflows** - Tone, autonomy, git behavior
+- **Skillset-specific workflows** - Tone, autonomy, git behavior
 - **Location:** `~/.cursor/AGENTS.md`
 
 ## 4. Slash Commands
@@ -68,10 +68,10 @@ npm install -g nori-ai
 nori-ai install --agent cursor-agent
 ```
 
-### 5.2 Switch Profiles
+### 5.2 Switch Skillsets
 
 ```bash
-nori-ai switch-profile --agent cursor-agent
+nori-ai switch-skillset --agent cursor-agent
 ```
 
 ## 6. Troubleshooting

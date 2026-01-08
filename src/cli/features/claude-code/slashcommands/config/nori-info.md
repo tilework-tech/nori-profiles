@@ -1,12 +1,12 @@
 ---
-description: Display information about Nori Profiles features and capabilities
+description: Display information about Nori Skillsets features and capabilities
 ---
 
-Please read the following information about Nori Profiles and provide a clear, concise summary to me. After your summary, state: "I loaded the nori documentation. You can ask me for more help about how to use nori if you would like."
+Please read the following information about Nori Skillsets and provide a clear, concise summary to me. After your summary, state: "I loaded the nori documentation. You can ask me for more help about how to use nori if you would like."
 
 Suggest helpful follow-up questions like:
 
-- "How do I switch between profiles?"
+- "How do I switch between skillsets?"
 - "What skills are available and when should I use them?"
 - "How do I use the Memorize and Recall skills?"
 - "What's the difference between skills and subagents?"
@@ -14,13 +14,13 @@ Suggest helpful follow-up questions like:
 
 ---
 
-# Nori Profiles Documentation
+# Nori Skillsets Documentation
 
 Nori enhances Claude Code with better context management, specialized workflows, and team collaboration features.
 
-## 1. Profile System
+## 1. Skillset System
 
-Profiles control Claude's behavior and autonomy level. Three built-in profiles are available:
+Skillsets control Claude's behavior and autonomy level. Three built-in skillsets are available:
 
 ### 1.1 senior-swe (Default)
 
@@ -43,11 +43,11 @@ Profiles control Claude's behavior and autonomy level. Three built-in profiles a
 - **Best for:** Product managers and users focused on product requirements
 - **Requires:** Paid tier
 
-### 1.4 Profile Management
+### 1.4 Skillset Management
 
-- **Switch profiles:** `/nori-switch-profile` or `nori-ai switch-profile`
-- **Custom profiles:** Create your own in `~/.nori/profiles/`
-- **Source of truth:** All profiles stored in `~/.nori/profiles/`
+- **Switch skillsets:** `/nori-switch-skillset` or `nori-ai switch-skillset`
+- **Custom skillsets:** Create your own in `~/.nori/profiles/`
+- **Source of truth:** All skillsets stored in `~/.nori/profiles/`
 
 **Available in:** Free and Paid
 
@@ -169,7 +169,7 @@ Real-time display of conversation metrics in your Claude Code interface.
 ### 7.1 Displayed Metrics
 
 - Git branch
-- Active profile name (color-coded in yellow)
+- Active skillset name (color-coded in yellow)
 - Token usage and conversation costs
 - Lines changed
 
@@ -182,13 +182,13 @@ Real-time display of conversation metrics in your Claude Code interface.
 
 ## 8. CLAUDE.md Behavioral Instructions
 
-Profile-specific instructions that guide Claude's behavior.
+Skillset-specific instructions that guide Claude's behavior.
 
 ### 8.1 Features
 
 - **Managed block pattern** - Safe updates without destroying user content
 - **Dynamic skills list** - Auto-generated from installed skills
-- **Profile-specific workflows** - Tone, autonomy, git behavior
+- **Skillset-specific workflows** - Tone, autonomy, git behavior
 - **Location:** `~/.claude/CLAUDE.md`
 
 **Available in:** Free and Paid
@@ -200,7 +200,7 @@ Custom commands available in Claude Code.
 - `/nori-info` - Display this information (you're using it now!)
 - `/nori-debug` - Validate Nori installation (`nori-ai check`)
 - `/nori-install-location` - Display Nori installation directories
-- `/nori-switch-profile` - Switch between profiles interactively
+- `/nori-switch-skillset` - Switch between skillsets interactively
 - `/nori-init-docs` - Generate documentation files throughout codebase
 
 **Available in:** Free and Paid
@@ -226,13 +226,13 @@ nori-ai install
 
 Provide your credentials when prompted.
 
-### 10.3 Switch Profiles
+### 10.3 Switch Skillsets
 
 ```bash
-nori-ai switch-profile
+nori-ai switch-skillset
 ```
 
-Or use the `/nori-switch-profile` slash command.
+Or use the `/nori-switch-skillset` slash command.
 
 ## 11. Troubleshooting
 

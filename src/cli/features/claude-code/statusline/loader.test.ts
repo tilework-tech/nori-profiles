@@ -440,8 +440,8 @@ describe("statuslineLoader", () => {
           encoding: "utf-8",
         });
 
-        // Verify output contains profile name
-        expect(output).toContain("Profile: amol");
+        // Verify output contains skillset name
+        expect(output).toContain("Skillset: amol");
       } finally {
         // Clean up nori-config.json
         await fs.rm(noriConfigPath, { force: true });
@@ -481,8 +481,8 @@ describe("statuslineLoader", () => {
           encoding: "utf-8",
         });
 
-        // Verify output does not contain profile
-        expect(output).not.toContain("Profile:");
+        // Verify output does not contain skillset
+        expect(output).not.toContain("Skillset:");
       } finally {
         // Restore nori-config.json if it existed
         // (No cleanup needed as we're in test environment)

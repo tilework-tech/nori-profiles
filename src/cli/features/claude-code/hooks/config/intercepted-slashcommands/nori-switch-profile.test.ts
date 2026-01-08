@@ -160,14 +160,14 @@ describe("nori-switch-profile", () => {
       );
     });
 
-    it("should list available profiles when no profile name provided", async () => {
+    it("should list available skillsets when no skillset name provided", async () => {
       const input = createInput({ prompt: "/nori-switch-profile" });
       const result = await noriSwitchProfile.run({ input });
 
       expect(result).not.toBeNull();
       expect(result!.decision).toBe("block");
       const plainReason = stripAnsi(result!.reason!);
-      expect(plainReason).toContain("Available profiles:");
+      expect(plainReason).toContain("Available skillsets:");
       expect(plainReason).toContain("amol");
       expect(plainReason).toContain("senior-swe");
       expect(plainReason).toContain("product-manager");
@@ -175,7 +175,7 @@ describe("nori-switch-profile", () => {
   });
 
   describe("error handling", () => {
-    it("should return error for non-existent profile", async () => {
+    it("should return error for non-existent skillset", async () => {
       const input = createInput({ prompt: "/nori-switch-profile nonexistent" });
       const result = await noriSwitchProfile.run({ input });
 
@@ -183,10 +183,10 @@ describe("nori-switch-profile", () => {
       expect(result!.decision).toBe("block");
       const plainReason = stripAnsi(result!.reason!);
       expect(plainReason).toContain("not found");
-      expect(plainReason).toContain("Available profiles:");
+      expect(plainReason).toContain("Available skillsets:");
     });
 
-    it("should return error when no profiles directory found", async () => {
+    it("should return error when no skillsets directory found", async () => {
       // Remove profiles directory
       await fs.rm(profilesDir, { recursive: true, force: true });
 
@@ -195,7 +195,7 @@ describe("nori-switch-profile", () => {
 
       expect(result).not.toBeNull();
       expect(result!.decision).toBe("block");
-      expect(stripAnsi(result!.reason!)).toContain("No profiles found");
+      expect(stripAnsi(result!.reason!)).toContain("No skillsets found");
     });
   });
 
@@ -293,7 +293,7 @@ describe("nori-switch-profile", () => {
       expect(result).not.toBeNull();
       expect(result!.decision).toBe("block");
       const plainReason = stripAnsi(result!.reason!);
-      expect(plainReason).toContain("Failed to switch profile");
+      expect(plainReason).toContain("Failed to switch skillset");
       expect(plainReason).toContain("nori-ai not found");
     });
   });
