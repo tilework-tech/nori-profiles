@@ -1,8 +1,8 @@
-# Nori Profiles
+# Nori Skillsets
 
 **Create custom coding agents that are fit for purpose.**
 
-As projects grow in complexity and specificity, off the shelf agents become less effective. Nori Profiles is a tool for building custom coding agents that are encoded with your development patterns, design standards, and engineering workflows.
+As projects grow in complexity and specificity, off the shelf agents become less effective. Nori Skillsets is a tool for building custom coding agents that are encoded with your development patterns, design standards, and engineering workflows.
 
 Nori lets you precisely define how you want your coding agent to reliably behave for engineering tasks:
 - Define consistent agent behavior for areas of development, tasks, or team roles
@@ -28,9 +28,9 @@ Launch Claude Code from your terminal. Nori features activate automatically.
 - Claude Code CLI installed
 - Mac or Linux operating system
 
-### Start by testing a profile
+### Start by testing a skillset
 
-During installation, choose a sample profile to try out how Nori works.
+During installation, choose a sample skillset to try out how Nori works.
 
 Examples:
 
@@ -38,16 +38,16 @@ Examples:
 - **product-manager**: Autonomous execution with technical guidance
 - **documenter**: Documentation-focused workflows
 
-Switch profiles anytime:
+Switch skillsets anytime:
 
 ```bash
-nori-ai switch-profile <profile-name>
+nori-ai switch-profile <skillset-name>
 ```
 
 Or use `/nori-switch-profile` during a conversation.
 
 
-### How to create your own profile
+### How to create your own skillset
 
 Define precise scopes of behavior for your development tasks. Your preferences for git automation, PRs creation, testing, and planning, optimized for context using all the best configuration options - agent.md, skills, subagents, and tools.
 
@@ -64,18 +64,18 @@ Claude will guide you through:
 - Identifying repeating instructions you give
 - Choosing relevant mixins (engineering, product, documentation workflows)
 - Writing your custom CLAUDE.md with your preferences
-- Setting up the profile structure
+- Setting up the skillset structure
 
-**Building a profile explicitly**
+**Building a skillset explicitly**
 
-1. Create the profile directory:
+1. Create the skillset directory:
    ```bash
-   mkdir -p ~/.claude/profiles/my-profile
+   mkdir -p ~/.claude/profiles/my-skillset
    ```
 
 2. Add a `CLAUDE.md` file with your custom instructions:
    ```markdown
-   # My Custom Profile
+   # My Custom Skillset
 
    Add your workflow preferences here:
    - Testing requirements
@@ -87,37 +87,37 @@ Claude will guide you through:
 3. Link to mixins (optional):
    ```bash
    # Link to the SWE mixin for engineering workflows
-   ln -s ~/.claude/_mixins/_swe ~/.claude/profiles/my-profile/_swe
+   ln -s ~/.claude/_mixins/_swe ~/.claude/profiles/my-skillset/_swe
    ```
 
    Available mixins: `_swe` (engineering), `_pm` (product), `_doc` (documentation)
 
-4. Activate your profile:
+4. Activate your skillset:
    ```bash
-   nori-ai switch-profile my-profile
+   nori-ai switch-profile my-skillset
    ```
 
    Or use `/nori-switch-profile` during a conversation.
 
-**Profile structure:**
+**Skillset structure:**
 
-Profiles live in `~/.claude/profiles/` and contain:
+Skillsets live in `~/.claude/profiles/` and contain:
 - `CLAUDE.md`: Your custom instructions and workflow preferences
 - Mixins: Linked configuration options
 - Custom skills and slash commands (optional)
 
-Each profile represents a distinct mode of work, letting you instantly tune the agent for different tasks.
+Each skillset represents a distinct mode of work, letting you instantly tune the agent for different tasks.
 
 ## Additional Features
 
-### Nori-profiles
+### Nori-skillsets
 
 _Enhances Claude Code with improved visibility and automations._
 
 - **6-checkpoint development workflow**: Setup verification → research → plan approval → TDD cycle → implementation → verification
 - **32+ engineering skills**: Step-by-step instructions for TDD, debugging, code review, git workflows, architecture decisions
-- **3 built-in profiles**: senior-swe, product-manager, documenter
-- **Real-time status line**: Git branch, active profile, token usage, conversation cost
+- **3 built-in skillsets**: senior-swe, product-manager, documenter
+- **Real-time status line**: Git branch, active skillset, token usage, conversation cost
 - **Slash commands**: Quick access to workflows (`/nori-info`, `/nori-debug`, `/nori-init-docs`, `/nori-switch-profile`)
 - **Specialized subagents**: codebase-locator, codebase-analyzer, codebase-pattern-finder, web-search-researcher
 - **Local noridocs**: Automatic documentation with change-documenter and initial-documenter subagents

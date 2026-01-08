@@ -1,6 +1,6 @@
 /**
- * Profile management for Nori Profiles
- * Handles profile listing, loading, and switching
+ * Skillset management for Nori Skillsets
+ * Handles skillset listing, loading, and switching
  */
 
 import {
@@ -16,7 +16,7 @@ import { normalizeInstallDir, getInstallDirs } from "@/utils/path.js";
 import type { Command } from "commander";
 
 /**
- * Determine which agent to use for switch-profile command when no --agent flag provided
+ * Determine which agent to use for switch-skillset command when no --agent flag provided
  * @param args - Configuration arguments
  * @param args.installDir - Installation directory
  * @param args.nonInteractive - Whether running in non-interactive mode
@@ -61,7 +61,7 @@ const resolveAgent = async (args: {
   });
 
   const selection = await promptUser({
-    prompt: `Select agent to switch profile (1-${installedAgents.length}): `,
+    prompt: `Select agent to switch skillset (1-${installedAgents.length}): `,
   });
 
   const selectedIndex = parseInt(selection, 10) - 1;
@@ -70,17 +70,17 @@ const resolveAgent = async (args: {
     selectedIndex < 0 ||
     selectedIndex >= installedAgents.length
   ) {
-    throw new Error("Invalid selection. Profile switch cancelled.");
+    throw new Error("Invalid selection. Skillset switch cancelled.");
   }
 
   return installedAgents[selectedIndex];
 };
 
 /**
- * Prompt user to confirm profile switch
+ * Prompt user to confirm skillset switch
  * @param args - Configuration arguments
  * @param args.installDir - Installation directory
- * @param args.profileName - New profile name to switch to
+ * @param args.profileName - New skillset name to switch to
  * @param args.agentName - Agent name
  * @param args.nonInteractive - Whether running in non-interactive mode
  *
@@ -99,7 +99,7 @@ const confirmSwitchProfile = async (args: {
     return true;
   }
 
-  // Load config to get current profile
+  // Load config to get current skillset
   const config = await loadConfig({ installDir });
   const agentProfile =
     config != null ? getAgentProfile({ config, agentName }) : null;
@@ -109,22 +109,107 @@ const confirmSwitchProfile = async (args: {
   const agent = AgentRegistry.getInstance().get({ name: agentName });
 
   // Display confirmation info
-  info({ message: "\nSwitching profile configuration:" });
+  info({ message: "\nSwitching skillset configuration:" });
   info({ message: `  Install directory: ${installDir}` });
   info({ message: `  Agent: ${agent.displayName} (${agentName})` });
-  info({ message: `  Current profile: ${currentProfile}` });
-  info({ message: `  New profile: ${profileName}` });
+  info({ message: `  Current skillset: ${currentProfile}` });
+  info({ message: `  New skillset: ${profileName}` });
   newline();
 
   const proceed = await promptUser({
-    prompt: "Proceed with profile switch? (y/n): ",
+    prompt: "Proceed with skillset switch? (y/n): ",
   });
 
   return proceed.match(/^[Yy]$/) != null;
 };
 
 /**
- * Register the 'switch-profile' command with commander
+ * Shared action handler for switch-skillset and switch-profile commands
+ * @param args - Configuration arguments
+ * @param args.name - The skillset name to switch to
+ * @param args.options - Command options
+ * @param args.options.agent - Optional agent name override
+ * @param args.program - Commander program instance
+ */
+const switchSkillsetAction = async (args: {
+  name: string;
+  options: { agent?: string };
+  program: Command;
+}): Promise<void> => {
+  const { name, options, program } = args;
+
+  // Get global options from parent
+  const globalOpts = program.opts();
+  const nonInteractive = globalOpts.nonInteractive ?? false;
+
+  // Determine installation directory
+  let installDir: string;
+
+  if (globalOpts.installDir != null && globalOpts.installDir !== "") {
+    // Explicit install dir provided - use it directly
+    installDir = normalizeInstallDir({ installDir: globalOpts.installDir });
+  } else {
+    // Auto-detect installation
+    const installations = getInstallDirs({ currentDir: process.cwd() });
+    if (installations.length === 0) {
+      throw new Error(
+        "No Nori installations found in current directory or parent directories. " +
+          "Run 'nori-ai install' to create a new installation, or use --install-dir to specify a location.",
+      );
+    }
+    installDir = installations[0]; // Use closest installation
+  }
+
+  // Use local --agent option if provided, otherwise auto-detect
+  // We don't use globalOpts.agent because it has a default value ("claude-code")
+  // which would prevent auto-detection from working
+  const agentName =
+    options.agent ?? (await resolveAgent({ installDir, nonInteractive }));
+
+  const agent = AgentRegistry.getInstance().get({ name: agentName });
+
+  // Confirm before proceeding
+  const confirmed = await confirmSwitchProfile({
+    installDir,
+    profileName: name,
+    agentName,
+    nonInteractive,
+  });
+
+  if (!confirmed) {
+    info({ message: "Skillset switch cancelled." });
+    return;
+  }
+
+  try {
+    // Delegate to agent's switchProfile method
+    await agent.switchProfile({ installDir, profileName: name });
+  } catch (err) {
+    // On failure, show available skillsets
+    const profiles = await agent.listProfiles({ installDir });
+    if (profiles.length > 0) {
+      error({ message: `Available skillsets: ${profiles.join(", ")}` });
+    }
+    throw err;
+  }
+
+  // Run install in silent mode with skipUninstall
+  // This preserves custom user skillsets during the skillset switch
+  const { main: installMain } =
+    await import("@/cli/commands/install/install.js");
+  await installMain({
+    nonInteractive: true,
+    skipUninstall: true,
+    installDir,
+    agent: agentName,
+    silent: true,
+  });
+
+  success({ message: `Switched to skillset: ${name}` });
+};
+
+/**
+ * Register the 'switch-skillset' and 'switch-profile' (alias) commands with commander
  * @param args - Configuration arguments
  * @param args.program - Commander program instance
  */
@@ -133,78 +218,23 @@ export const registerSwitchProfileCommand = (args: {
 }): void => {
   const { program } = args;
 
+  // Primary command: switch-skillset
+  program
+    .command("switch-skillset <name>")
+    .description("Switch to a different skillset and reinstall")
+    .option("-a, --agent <name>", "AI agent to switch skillset for")
+    .action(async (name: string, options: { agent?: string }) => {
+      await switchSkillsetAction({ name, options, program });
+    });
+
+  // Alias command: switch-profile (for backward compatibility)
   program
     .command("switch-profile <name>")
-    .description("Switch to a different profile and reinstall")
-    .option("-a, --agent <name>", "AI agent to switch profile for")
+    .description(
+      "Alias for switch-skillset - Switch to a different skillset and reinstall",
+    )
+    .option("-a, --agent <name>", "AI agent to switch skillset for")
     .action(async (name: string, options: { agent?: string }) => {
-      // Get global options from parent
-      const globalOpts = program.opts();
-      const nonInteractive = globalOpts.nonInteractive ?? false;
-
-      // Determine installation directory
-      let installDir: string;
-
-      if (globalOpts.installDir != null && globalOpts.installDir !== "") {
-        // Explicit install dir provided - use it directly
-        installDir = normalizeInstallDir({ installDir: globalOpts.installDir });
-      } else {
-        // Auto-detect installation
-        const installations = getInstallDirs({ currentDir: process.cwd() });
-        if (installations.length === 0) {
-          throw new Error(
-            "No Nori installations found in current directory or parent directories. " +
-              "Run 'nori-ai install' to create a new installation, or use --install-dir to specify a location.",
-          );
-        }
-        installDir = installations[0]; // Use closest installation
-      }
-
-      // Use local --agent option if provided, otherwise auto-detect
-      // We don't use globalOpts.agent because it has a default value ("claude-code")
-      // which would prevent auto-detection from working
-      const agentName =
-        options.agent ?? (await resolveAgent({ installDir, nonInteractive }));
-
-      const agent = AgentRegistry.getInstance().get({ name: agentName });
-
-      // Confirm before proceeding
-      const confirmed = await confirmSwitchProfile({
-        installDir,
-        profileName: name,
-        agentName,
-        nonInteractive,
-      });
-
-      if (!confirmed) {
-        info({ message: "Profile switch cancelled." });
-        return;
-      }
-
-      try {
-        // Delegate to agent's switchProfile method
-        await agent.switchProfile({ installDir, profileName: name });
-      } catch (err) {
-        // On failure, show available profiles
-        const profiles = await agent.listProfiles({ installDir });
-        if (profiles.length > 0) {
-          error({ message: `Available profiles: ${profiles.join(", ")}` });
-        }
-        throw err;
-      }
-
-      // Run install in silent mode with skipUninstall
-      // This preserves custom user profiles during the profile switch
-      const { main: installMain } =
-        await import("@/cli/commands/install/install.js");
-      await installMain({
-        nonInteractive: true,
-        skipUninstall: true,
-        installDir,
-        agent: agentName,
-        silent: true,
-      });
-
-      success({ message: `Switched to profile: ${name}` });
+      await switchSkillsetAction({ name, options, program });
     });
 };

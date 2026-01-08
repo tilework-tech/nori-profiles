@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Nori Profiles Status Line
+# Nori Skillsets Status Line
 # Displays git branch, session cost, token usage, and Nori branding
 
 # Read JSON context from stdin
@@ -214,13 +214,13 @@ TIPS=(
     "Nori Tip: Leverage your whole team's knowledge with the paid Nori server"
     "Nori Tip: Keep an eye on your total context usage. Start new conversations regularly!"
     "Nori Tip: Agents love tests! Use Nori's built-in Test Driven Development to never have a regression."
-    "Nori Tip: Switch workflows with /nori-switch-profile - try documenter, senior-swe, or product-manager"
+    "Nori Tip: Switch workflows with /nori-switch-skillset - try documenter, senior-swe, or product-manager"
     "Nori Tip: Use /sync-noridocs to bulk upload all your local docs.md files to the server (paid)"
     "Nori Tip: The nori-change-documenter subagent automatically updates docs when you make code changes"
     "Nori Tip: Use the systematic-debugging skill when bugs occur - it ensures root cause analysis"
     "Nori Tip: The root-cause-tracing skill helps trace errors backward through the call stack"
     "Nori Tip: Try using the webapp-testing skill to debug UI/UX failures"
-    "Nori Tip: Create custom profiles with /nori-create-profile - clone and customize to your workflow"
+    "Nori Tip: Create custom skillsets with /nori-create-skillset - clone and customize to your workflow"
     "Nori Tip: Nori can take screenshots - ask it to analyze your screen for visual UI debugging"
     "Nori Tip: Get automated code review before PRs with the nori-code-reviewer subagent"
     "Nori Tip: Use the handle-large-tasks skill to split complex work for better context management"
@@ -259,9 +259,9 @@ else
 fi
 
 # Build status line with colors - split into three lines
-# Line 1: Main metrics (git, [profile if set], cost, tokens, context, lines)
+# Line 1: Main metrics (git, [skillset if set], cost, tokens, context, lines)
 if [ -n "$PROFILE_NAME" ]; then
-    echo -e "${MAGENTA}⎇ ${BRANCH}${NC} | ${YELLOW}Profile: ${PROFILE_NAME}${NC} | ${GREEN}Cost: \$${COST_FORMATTED}${NC} | ${CYAN}Tokens: ${TOKENS_FORMATTED}${NC} | Context: ${CONTEXT_FORMATTED} | Lines: ${LINES_FORMATTED}"
+    echo -e "${MAGENTA}⎇ ${BRANCH}${NC} | ${YELLOW}Skillset: ${PROFILE_NAME}${NC} | ${GREEN}Cost: \$${COST_FORMATTED}${NC} | ${CYAN}Tokens: ${TOKENS_FORMATTED}${NC} | Context: ${CONTEXT_FORMATTED} | Lines: ${LINES_FORMATTED}"
 else
     echo -e "${MAGENTA}⎇ ${BRANCH}${NC} | ${GREEN}Cost: \$${COST_FORMATTED}${NC} | ${CYAN}Tokens: ${TOKENS_FORMATTED}${NC} | Context: ${CONTEXT_FORMATTED} | Lines: ${LINES_FORMATTED}"
 fi

@@ -1,14 +1,12 @@
 ---
-description: Alias for /nori-switch-skillset - Switch between Nori configuration skillsets
+description: Switch between Nori configuration skillsets (amol, senior-swe, product-manager, documenter, none)
 ---
-
-This command is an alias for `/nori-switch-skillset`.
 
 Switch to a different Nori configuration skillset.
 
 This command is intercepted by a hook and executed directly without LLM processing.
 
-**Usage:** `/nori-switch-profile <skillset-name>` or `/nori-switch-skillset <skillset-name>`
+**Usage:** `/nori-switch-skillset <skillset-name>`
 
 **Examples:**
 - `/nori-switch-skillset senior-swe`
