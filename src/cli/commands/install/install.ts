@@ -20,6 +20,12 @@ import {
 } from "@/cli/commands/install/asciiArt.js";
 import { hasExistingInstallation } from "@/cli/commands/install/installState.js";
 import {
+  orderProfilesForDisplay,
+  KNOWN_PROFILES,
+  ADDITIONAL_PROFILES,
+  RECOMMENDED_PROFILE,
+} from "@/cli/commands/install/profileOrder.js";
+import {
   loadConfig,
   getDefaultProfile,
   getAgentProfile,
@@ -367,14 +373,19 @@ export const generatePromptConfig = async (args: {
   });
   newline();
 
-  // Categorize profiles
-  const knownProfiles = ["senior-swe", "amol", "product-manager"];
-  const recommendedProfile = profiles.find((p) => p.name === "senior-swe");
-  const additionalProfiles = profiles.filter(
-    (p) => p.name === "amol" || p.name === "product-manager",
+  // Order profiles for display (senior-swe first, then amol/product-manager, then custom)
+  // This ensures selection index maps to the correct profile
+  const displayOrderedProfiles = orderProfilesForDisplay({ profiles });
+
+  // Categorize for display formatting
+  const recommendedProfile = displayOrderedProfiles.find(
+    (p) => p.name === RECOMMENDED_PROFILE,
   );
-  const customProfiles = profiles.filter(
-    (p) => !knownProfiles.includes(p.name),
+  const additionalProfiles = displayOrderedProfiles.filter((p) =>
+    ADDITIONAL_PROFILES.includes(p.name),
+  );
+  const customProfiles = displayOrderedProfiles.filter(
+    (p) => !KNOWN_PROFILES.includes(p.name),
   );
 
   let profileIndex = 1;
@@ -431,15 +442,16 @@ export const generatePromptConfig = async (args: {
   newline();
 
   // Loop until valid selection
+  // Use displayOrderedProfiles for selection to match the display order
   let selectedProfileName: string;
   while (true) {
     const response = await promptUser({
-      prompt: `Select a profile (1-${profiles.length}): `,
+      prompt: `Select a profile (1-${displayOrderedProfiles.length}): `,
     });
 
     const selectedIndex = parseInt(response) - 1;
-    if (selectedIndex >= 0 && selectedIndex < profiles.length) {
-      const selected = profiles[selectedIndex];
+    if (selectedIndex >= 0 && selectedIndex < displayOrderedProfiles.length) {
+      const selected = displayOrderedProfiles[selectedIndex];
       info({ message: `Loading "${selected.name}" profile...` });
       selectedProfileName = selected.name;
       break;
@@ -447,7 +459,7 @@ export const generatePromptConfig = async (args: {
 
     // Invalid selection - show error and loop
     error({
-      message: `Invalid selection "${response}". Please enter a number between 1 and ${profiles.length}.`,
+      message: `Invalid selection "${response}". Please enter a number between 1 and ${displayOrderedProfiles.length}.`,
     });
     newline();
   }
