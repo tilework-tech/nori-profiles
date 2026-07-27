@@ -32,10 +32,13 @@ import {
   registerNoriSkillsetsListSkillsetsCommand,
   registerNoriSkillsetsLoginCommand,
   registerNoriSkillsetsNewCommand,
+  registerNoriSkillsetsPublishCommand,
   registerNoriSkillsetsRegisterCommand,
   registerNoriSkillsetsLogoutCommand,
   registerNoriSkillsetsSearchCommand,
   registerNoriSkillsetsSwitchSkillsetCommand,
+  registerNoriSkillsetsUpdateCommand,
+  registerNoriSkillsetsTrustCommand,
   registerNoriSkillsetsUnlinkCommand,
   registerNoriSkillsetsUploadCommand,
   registerNoriSkillsetsUploadSkillCommand,
@@ -139,7 +142,8 @@ Examples:
   $ nori-skillsets upload myorg/my-skillset
   $ nori-skillsets upload my-skillset --list-versions
   $ nori-skillsets install my-skillset
-  $ nori-skillsets install my-skillset --user
+  $ nori-skillsets install my-skillset --from git@github.com:myorg/skillsets.git
+  $ nori-skillsets install my-skillset --from git@github.com:myorg/skillsets.git --pin 0123456789abcdef0123456789abcdef01234567
   $ nori-skillsets switch senior-swe
   $ nori-skillsets list
   $ nori-skillsets current
@@ -164,6 +168,7 @@ Examples:
   $ nori-skillsets register my-skillset                     # create nori.json for existing skillset
   $ nori-skillsets register                                 # create nori.json for current skillset
   $ nori-skillsets fork senior-swe my-custom                # fork a skillset to a new name
+  $ nori-skillsets publish my-custom --to git@github.com:myorg/skillsets.git
   $ nori-skillsets edit                                     # open active skillset in VS Code
   $ nori-skillsets edit my-skillset                          # open a specific skillset
   $ nori-skillsets clear                                     # remove Nori-managed config from install directory
@@ -186,6 +191,8 @@ registerNoriSkillsetsDownloadCommand({ program });
 registerNoriSkillsetsUploadCommand({ program });
 registerNoriSkillsetsInstallCommand({ program });
 registerNoriSkillsetsSwitchSkillsetCommand({ program });
+registerNoriSkillsetsUpdateCommand({ program });
+registerNoriSkillsetsTrustCommand({ program });
 registerNoriSkillsetsLinkCommand({ program });
 registerNoriSkillsetsUnlinkCommand({ program });
 registerNoriSkillsetsListSkillsetsCommand({ program });
@@ -202,6 +209,7 @@ registerNoriSkillsetsInstallLocationCommand({ program });
 registerNoriSkillsetsCompletionCommand({ program });
 registerNoriSkillsetsForkCommand({ program });
 registerNoriSkillsetsNewCommand({ program });
+registerNoriSkillsetsPublishCommand({ program });
 registerNoriSkillsetsRegisterCommand({ program });
 registerNoriSkillsetsImportMcpCommand({ program });
 registerNoriSkillsetsEditSkillsetCommand({ program });

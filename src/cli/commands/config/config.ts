@@ -21,7 +21,9 @@ import {
   removeSkillset,
 } from "@/cli/features/agentOperations.js";
 import { AgentRegistry } from "@/cli/features/agentRegistry.js";
+import { assertSupportedRemote } from "@/cli/features/gitPackage.js";
 import { main as installMain } from "@/cli/features/install/install.js";
+import { withInstallLock } from "@/cli/features/install/installLock.js";
 import { confirmAction } from "@/cli/prompts/confirm.js";
 import { configFlow } from "@/cli/prompts/flows/config.js";
 import { isReservedSkillsetName } from "@/cli/prompts/validators.js";
@@ -108,6 +110,17 @@ const parseDefaultOrgOption = (args: { defaultOrg: string }): string | null => {
   return trimmed;
 };
 
+// Parse the raw `--primary-remote` value: empty clears the setting; otherwise
+// require a supported Git transport (rejects remote-helper/unknown schemes).
+const parsePrimaryRemoteOption = (args: {
+  primaryRemote: string;
+}): string | null => {
+  const trimmed = args.primaryRemote.trim();
+  if (trimmed === "") return null;
+  assertSupportedRemote({ remote: trimmed });
+  return trimmed;
+};
+
 /**
  * Main config function
  *
@@ -129,13 +142,14 @@ const parseDefaultOrgOption = (args: { defaultOrg: string }): string | null => {
  *
  * @returns Command status indicating success or cancellation
  */
-export const configMain = async (
+const configMainImpl = async (
   args?: {
     agents?: string | null;
     installDir?: string | null;
     redownloadOnSwitch?: boolean | null;
     claudeCodeStatusLine?: boolean | null;
     defaultOrg?: string | null;
+    primaryRemote?: string | null;
     nonInteractive?: boolean | null;
   } | null,
 ): Promise<CommandStatus> => {
@@ -145,6 +159,7 @@ export const configMain = async (
     redownloadOnSwitch,
     claudeCodeStatusLine,
     defaultOrg,
+    primaryRemote,
     nonInteractive,
   } = args ?? {};
 
@@ -153,12 +168,13 @@ export const configMain = async (
     installDir != null ||
     redownloadOnSwitch != null ||
     claudeCodeStatusLine != null ||
-    defaultOrg != null;
+    defaultOrg != null ||
+    primaryRemote != null;
 
   if (hasOptions || nonInteractive) {
     if (!hasOptions) {
       throw new Error(
-        "No configuration options provided. Use --agents, --install-dir, --redownload-on-switch, --claude-code-status-line, or --default-org.",
+        "No configuration options provided. Use --agents, --install-dir, --redownload-on-switch, --claude-code-status-line, --default-org, or --primary-remote.",
       );
     }
 
@@ -168,6 +184,7 @@ export const configMain = async (
       redownloadOnSwitch?: "enabled" | "disabled";
       claudeCodeStatusLine?: "enabled" | "disabled";
       defaultOrg?: string | null;
+      primaryRemote?: string | null;
     } = {};
 
     if (agents != null) {
@@ -194,6 +211,11 @@ export const configMain = async (
     if (defaultOrg != null) {
       // An empty value clears the setting; otherwise validate the org ID.
       update.defaultOrg = parseDefaultOrgOption({ defaultOrg });
+    }
+
+    if (primaryRemote != null) {
+      // An empty value clears the setting; otherwise validate the remote.
+      update.primaryRemote = parsePrimaryRemoteOption({ primaryRemote });
     }
 
     await updateConfig(update);
@@ -380,3 +402,16 @@ export const configMain = async (
 
   return { success: true, cancelled: false, message: "Configuration saved" };
 };
+
+export const configMain = async (
+  args?: {
+    agents?: string | null;
+    installDir?: string | null;
+    redownloadOnSwitch?: boolean | null;
+    claudeCodeStatusLine?: boolean | null;
+    defaultOrg?: string | null;
+    primaryRemote?: string | null;
+    nonInteractive?: boolean | null;
+  } | null,
+): Promise<CommandStatus> =>
+  withInstallLock({ operation: () => configMainImpl(args) });

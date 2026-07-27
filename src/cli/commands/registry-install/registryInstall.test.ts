@@ -7,6 +7,46 @@ import * as fs from "fs/promises";
 import * as clack from "@clack/prompts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const mockInstallLock = vi.hoisted(() => {
+  let active = false;
+  return {
+    reset: () => {
+      active = false;
+    },
+    withInstallLock: vi.fn(
+      async <T>(args: { operation: () => Promise<T> }): Promise<T> => {
+        if (active) {
+          throw new Error("Another Nori installation is already in progress");
+        }
+        active = true;
+        try {
+          return await args.operation();
+        } finally {
+          active = false;
+        }
+      },
+    ),
+  };
+});
+
+vi.mock("@/cli/features/install/installLock.js", () => ({
+  withInstallLock: mockInstallLock.withInstallLock,
+}));
+
+const mockActivationTransaction = vi.hoisted(() => ({
+  withActivationTransaction: vi.fn(
+    async <T>(a: { operation: () => Promise<T> }): Promise<T> => a.operation(),
+  ),
+  recoverPendingActivations: vi.fn(async (): Promise<void> => undefined),
+}));
+
+vi.mock("@/cli/features/install/activationTransaction.js", () => ({
+  withActivationTransaction:
+    mockActivationTransaction.withActivationTransaction,
+  recoverPendingActivations:
+    mockActivationTransaction.recoverPendingActivations,
+}));
+
 vi.mock("os", async () => {
   const actual: any = await vi.importActual("os");
   return {
@@ -149,13 +189,31 @@ describe("registry-install", () => {
       skillset: "public/senior-swe",
       agent: "claude-code",
       silent: null,
-      persistActiveSkillset: true,
+      persistActiveSkillset: false,
     });
 
     // Should NOT call switchSkillset or second install (initial install handles it)
     expect(mockSwitchSkillset).not.toHaveBeenCalled();
     expect(installMain).toHaveBeenCalledTimes(1);
     expect(registryDownloadMain).toHaveBeenCalledTimes(1);
+
+    // The active pointer is persisted (now owned by the transaction, not installMain).
+    expect(updateConfig).toHaveBeenCalledWith({
+      activeSkillset: "public/senior-swe",
+    });
+
+    // Activation is wrapped in the transaction with the resolved install dir and agents.
+    expect(
+      mockActivationTransaction.withActivationTransaction,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        installDir: "/mock-home",
+        agents: expect.arrayContaining([
+          expect.objectContaining({ name: "claude-code" }),
+        ]),
+        operation: expect.any(Function),
+      }),
+    );
   });
 
   it("should not persist global activeSkillset for a transient --install-dir install", async () => {
@@ -206,7 +264,7 @@ describe("registry-install", () => {
       agent: "claude-code",
       silent: true,
       skillset: "public/senior-swe",
-      persistActiveSkillset: true,
+      persistActiveSkillset: false,
     });
 
     expect(registryDownloadMain).toHaveBeenCalledTimes(1);
@@ -251,7 +309,7 @@ describe("registry-install", () => {
       skillset: "public/product-manager",
       agent: "claude-code",
       silent: null,
-      persistActiveSkillset: true,
+      persistActiveSkillset: false,
     });
   });
 
@@ -275,7 +333,7 @@ describe("registry-install", () => {
       skillset: "public/documenter",
       agent: "claude-code",
       silent: null,
-      persistActiveSkillset: true,
+      persistActiveSkillset: false,
     });
   });
 
@@ -361,6 +419,26 @@ describe("registry-install", () => {
 
     // Should return success
     expect(result.success).toBe(true);
+  });
+
+  it("refuses to activate a local skillset after a source-authority conflict", async () => {
+    vi.mocked(registryDownloadMain).mockResolvedValueOnce({
+      success: false,
+      cancelled: false,
+      message: "Registrar update refused for a Git working tree",
+      failureKind: "source-authority",
+    });
+
+    const result = await registryInstallMain({
+      packageSpec: "senior-swe",
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      message: "Registrar update refused for a Git working tree",
+    });
+    expect(mockSwitchSkillset).not.toHaveBeenCalled();
+    expect(installMain).not.toHaveBeenCalled();
   });
 
   it("should fail when download fails and skillset does not exist locally", async () => {

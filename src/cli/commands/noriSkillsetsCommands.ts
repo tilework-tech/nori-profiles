@@ -128,24 +128,147 @@ export const registerNoriSkillsetsNewCommand = (args: {
 }): void => {
   const { program } = args;
 
-  const newAction = async () => {
+  const newAction = async (skillsetName: string | undefined) => {
     const { newSkillsetMain } =
       await import("@/cli/commands/new-skillset/newSkillset.js");
     await wrapWithFraming({
       title: "Create New Skillset",
       exitOnFailure: true,
-      action: () => newSkillsetMain(),
+      action: () => newSkillsetMain({ skillsetName: skillsetName ?? null }),
     });
   };
 
   // Primary command: new
   program
-    .command("new")
+    .command("new [skillset]")
     .description("Create a new empty skillset")
     .action(newAction);
 
   // Hidden alias: new-skillset
-  program.command("new-skillset", { hidden: true }).action(newAction);
+  program
+    .command("new-skillset [skillset]", { hidden: true })
+    .action(newAction);
+};
+
+/**
+ * Register the Git-backed publish command.
+ * @param args - Configuration arguments
+ * @param args.program - Commander program instance
+ */
+export const registerNoriSkillsetsPublishCommand = (args: {
+  program: Command;
+}): void => {
+  const { program } = args;
+
+  program
+    .command("publish <skillset>")
+    .description("Commit and publish a Git-backed skillset")
+    .requiredOption("--to <remote>", "Git remote URL, path, or configured name")
+    .option("-m, --message <text>", "Commit message")
+    .option("-y, --yes", "Confirm publication without prompting")
+    .action(
+      async (
+        skillset: string,
+        options: {
+          message?: string;
+          to: string;
+          yes?: boolean;
+        },
+      ) => {
+        const { publishSkillsetMain } =
+          await import("@/cli/commands/publish-skillset/publishSkillset.js");
+        const globalOpts = program.opts();
+        await wrapWithFraming({
+          title: "Publish Skillset",
+          exitOnFailure: true,
+          silent: globalOpts.silent || null,
+          action: () =>
+            publishSkillsetMain({
+              skillset,
+              remote: options.to,
+              message: options.message ?? null,
+              yes: options.yes ?? false,
+              nonInteractive:
+                globalOpts.nonInteractive || globalOpts.silent || null,
+              silent: globalOpts.silent || null,
+            }),
+        });
+      },
+    );
+};
+
+/**
+ * Register the 'update' command for nori-skillsets CLI
+ * @param args - Configuration arguments
+ * @param args.program - Commander program instance
+ */
+export const registerNoriSkillsetsUpdateCommand = (args: {
+  program: Command;
+}): void => {
+  const { program } = args;
+
+  program
+    .command("update <skillset>")
+    .description("Update a Git-backed skillset to its latest branch tip")
+    .action(async (skillset: string) => {
+      const { updateSkillsetMain } =
+        await import("@/cli/commands/update-skillset/updateSkillset.js");
+      const globalOpts = program.opts();
+      await wrapWithFraming({
+        title: "Update Skillset",
+        exitOnFailure: true,
+        silent: globalOpts.silent || null,
+        action: () =>
+          updateSkillsetMain({
+            slug: skillset,
+            installDir: globalOpts.installDir ?? null,
+            nonInteractive:
+              globalOpts.nonInteractive || globalOpts.silent || null,
+            silent: globalOpts.silent || null,
+          }),
+      });
+    });
+};
+
+/**
+ * Register the 'trust' command family for nori-skillsets CLI
+ * @param args - Configuration arguments
+ * @param args.program - Commander program instance
+ */
+export const registerNoriSkillsetsTrustCommand = (args: {
+  program: Command;
+}): void => {
+  const { program } = args;
+  const trust = program
+    .command("trust")
+    .description("Manage durable trust for Git-backed skillset sources");
+
+  trust
+    .command("list")
+    .description("List trusted Git sources")
+    .action(async () => {
+      const { trustListMain } = await import("@/cli/commands/trust/trust.js");
+      const globalOpts = program.opts();
+      await wrapWithFraming({
+        title: "Trusted Sources",
+        silent: globalOpts.silent || null,
+        action: () => trustListMain(),
+      });
+    });
+
+  trust
+    .command("revoke <remote> <slug>")
+    .description("Revoke trust for a Git source")
+    .action(async (remote: string, slug: string) => {
+      const { trustRevokeMain } = await import("@/cli/commands/trust/trust.js");
+      const globalOpts = program.opts();
+      await wrapWithFraming({
+        title: "Revoke Trust",
+        exitOnFailure: true,
+        silent: globalOpts.silent || null,
+        action: () => trustRevokeMain({ remote, slug }),
+      });
+    });
 };
 
 /**
@@ -449,26 +572,85 @@ export const registerNoriSkillsetsInstallCommand = (args: {
   program
     .command("install <package>")
     .description(
-      "Download, install, and activate a skillset in one step (bare names use the configured default org, else the public registry)",
+      "Install and activate a skillset from the Registry or an explicit Git remote",
     )
-    .action(async (packageSpec: string) => {
-      const { registryInstallMain } =
-        await import("@/cli/commands/registry-install/registryInstall.js");
-      const globalOpts = program.opts();
+    .option("--from <remote>", "Install from a Git remote")
+    .option(
+      "--pin <sha>",
+      "Install an exact full 40- or 64-character commit SHA from the skillset branch",
+    )
+    .option(
+      "--trust-source",
+      "Trust the Git source without prompting (required in non-interactive mode)",
+    )
+    .action(
+      async (
+        packageSpec: string,
+        options: { from?: string; pin?: string; trustSource?: boolean },
+      ) => {
+        const globalOpts = program.opts();
 
-      await wrapWithFraming({
-        title: "Install Skillset",
-        exitOnFailure: true,
-        silent: globalOpts.silent || null,
-        action: () =>
-          registryInstallMain({
-            packageSpec,
-            installDir: globalOpts.installDir || null,
-            nonInteractive: globalOpts.nonInteractive || null,
-            silent: globalOpts.silent || null,
-          }),
-      });
-    });
+        await wrapWithFraming({
+          title: "Install Skillset",
+          exitOnFailure: true,
+          silent: globalOpts.silent || null,
+          action: async () => {
+            if (options.from != null) {
+              const { gitInstallMain } =
+                await import("@/cli/commands/git-install/gitInstall.js");
+              return gitInstallMain({
+                slug: packageSpec,
+                remote: options.from,
+                installDir: globalOpts.installDir || null,
+                nonInteractive:
+                  globalOpts.nonInteractive || globalOpts.silent || null,
+                pin: options.pin ?? null,
+                silent: globalOpts.silent || null,
+                trustSource: options.trustSource ?? null,
+              });
+            }
+            // A configured primary remote redirects bare-name installs to Git.
+            const { loadConfig } = await import("@/cli/config.js");
+            const config = await loadConfig();
+            if (config?.primaryRemote != null) {
+              if (options.pin != null) {
+                return {
+                  success: false,
+                  cancelled: false,
+                  message: "--pin requires an explicit --from <git-remote>",
+                };
+              }
+              const { gitInstallMain } =
+                await import("@/cli/commands/git-install/gitInstall.js");
+              return gitInstallMain({
+                slug: packageSpec,
+                remote: config.primaryRemote,
+                installDir: globalOpts.installDir || null,
+                nonInteractive:
+                  globalOpts.nonInteractive || globalOpts.silent || null,
+                silent: globalOpts.silent || null,
+                trustSource: options.trustSource ?? null,
+              });
+            }
+            if (options.trustSource === true || options.pin != null) {
+              return {
+                success: false,
+                cancelled: false,
+                message: "Git-only options require --from <git-remote>",
+              };
+            }
+            const { registryInstallMain } =
+              await import("@/cli/commands/registry-install/registryInstall.js");
+            return registryInstallMain({
+              packageSpec,
+              installDir: globalOpts.installDir || null,
+              nonInteractive: globalOpts.nonInteractive || null,
+              silent: globalOpts.silent || null,
+            });
+          },
+        });
+      },
+    );
 };
 
 /**
@@ -1204,12 +1386,17 @@ export const registerNoriSkillsetsConfigCommand = (args: {
       "--default-org <org>",
       'Default org for bare package names (empty string "" to clear)',
     )
+    .option(
+      "--primary-remote <remote>",
+      'Git remote for bare-name installs, instead of the Registry (empty string "" to clear)',
+    )
     .action(
       async (options: {
         agents?: string;
         redownloadOnSwitch?: boolean;
         claudeCodeStatusLine?: boolean;
         defaultOrg?: string;
+        primaryRemote?: string;
       }) => {
         const { configMain } = await import("@/cli/commands/config/config.js");
         const globalOpts = program.opts();
@@ -1223,6 +1410,7 @@ export const registerNoriSkillsetsConfigCommand = (args: {
               redownloadOnSwitch: options.redownloadOnSwitch ?? null,
               claudeCodeStatusLine: options.claudeCodeStatusLine ?? null,
               defaultOrg: options.defaultOrg ?? null,
+              primaryRemote: options.primaryRemote ?? null,
               nonInteractive: globalOpts.nonInteractive || null,
             }),
         });

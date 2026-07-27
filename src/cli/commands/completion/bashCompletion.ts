@@ -10,7 +10,7 @@ _nori_skillsets_completions() {
   cur="\${COMP_WORDS[COMP_CWORD]}"
   prev="\${COMP_WORDS[COMP_CWORD-1]}"
 
-  commands="login logout init search download install switch list link unlink download-skill external watch dir fork edit install-location clear clear-current factory-reset completion help"
+  commands="login logout init search download install switch update trust list link unlink download-skill external watch dir fork publish edit install-location clear clear-current factory-reset completion help"
   global_opts="--install-dir --non-interactive --silent --agent --help --version"
 
   # Complete subcommand at position 1
@@ -31,6 +31,9 @@ _nori_skillsets_completions() {
     fork-skillset)
       COMPREPLY=( $(compgen -W "\${global_opts}" -- "\${cur}") )
       ;;
+    publish)
+      COMPREPLY=( $(compgen -W "--to --message --yes \${global_opts}" -- "\${cur}") )
+      ;;
     edit)
       COMPREPLY=( $(compgen -W "--agent \${global_opts}" -- "\${cur}") )
       ;;
@@ -41,7 +44,7 @@ _nori_skillsets_completions() {
       COMPREPLY=( $(compgen -W "--registry --list-versions \${global_opts}" -- "\${cur}") )
       ;;
     install)
-      COMPREPLY=( $(compgen -W "--user \${global_opts}" -- "\${cur}") )
+      COMPREPLY=( $(compgen -W "--from --pin --trust-source \${global_opts}" -- "\${cur}") )
       ;;
     switch)
       if [[ \${COMP_CWORD} -eq 2 ]] && [[ "\${cur}" != -* ]]; then
