@@ -25,6 +25,8 @@ _nori_skillsets() {
     'download:Download and install a skillset package'
     'install:Download, install, and activate a skillset'
     'switch:Switch to a different skillset and reinstall'
+    'update:Update a Git-backed skillset to its latest branch tip'
+    'trust:Manage durable trust for Git-backed skillset sources'
     'list:List locally available skillsets'
     'link:Link a local directory as a skillset'
     'unlink:Unlink a symlinked skillset'
@@ -33,6 +35,7 @@ _nori_skillsets() {
     'watch:Watch Claude Code sessions and save transcripts'
     'dir:Open the Nori skillsets directory'
     'fork:Fork an existing skillset to a new name'
+    'publish:Commit and publish a Git-backed skillset'
     'edit:Open a skillset folder in VS Code'
     'install-location:Display Nori installation directories'
     'clear:Remove all Nori-managed configuration from the install directory'
@@ -70,6 +73,14 @@ _nori_skillsets() {
             '2:new-skillset:' \\
             \$global_opts
           ;;
+        publish)
+          _arguments \\
+            '1:skillset:' \\
+            '--to[Git remote URL, path, or configured name]:remote:' \\
+            '(-m --message)'{-m,--message}'[Commit message]:text:' \\
+            '(-y --yes)'{-y,--yes}'[Confirm publication without prompting]' \\
+            \$global_opts
+          ;;
         edit)
           _arguments \\
             '1:name:' \\
@@ -91,7 +102,9 @@ _nori_skillsets() {
         install)
           _arguments \\
             '1:package:' \\
-            '--user[Install to user home directory]' \\
+            '--from[Install from a Git remote]:remote:' \\
+            '--pin[Install an exact commit from the skillset branch]:sha:' \\
+            '--trust-source[Trust the Git source without prompting]' \\
             \$global_opts
           ;;
         switch)

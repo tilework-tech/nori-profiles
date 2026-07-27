@@ -113,10 +113,19 @@ export type AgentConfig = {
   getSubagentsDir: (args: { installDir: string }) => string;
   getSlashcommandsDir: (args: { installDir: string }) => string;
   getInstructionsFilePath: (args: { installDir: string }) => string;
+  getProjectMcpFile?: ((args: { installDir: string }) => string) | null;
 
   getLoaders: () => Array<AgentLoader>;
 
   getExternalSettingsFiles?: (() => ReadonlyArray<string>) | null;
+  /**
+   * Absolute paths of MCP config files this agent writes that are not covered
+   * by the loader `managedFiles`/`managedDirs` set (the project `.mcp.json` and
+   * the user MCP file). Used by transactional activation to snapshot them.
+   */
+  getMcpManagedPaths?:
+    | ((args: { installDir: string }) => ReadonlyArray<string>)
+    | null;
   getLegacyManifestPath?: (() => string) | null;
   getTranscriptDirectory?: (() => string) | null;
   getArtifactPatterns?:

@@ -148,16 +148,24 @@ const completeInstallation = async (args: {
  * @param args - Configuration arguments
  * @param args.installDir - Installation directory (optional)
  * @param args.agent - AI agent to use (defaults to claude-code)
+ * @param args.persistInstallMarkers - When false, defer .nori-managed marker writes
  * @param args.skillset - Skillset to use (required if no existing config)
  * @param args.persistActiveSkillset - When false, do not persist the selected skillset to the global config (transient --install-dir switch)
  */
 export const noninteractive = async (args?: {
   installDir?: string | null;
   agent?: string | null;
+  persistInstallMarkers?: boolean | null;
   skillset?: string | null;
   persistActiveSkillset?: boolean | null;
 }): Promise<void> => {
-  const { installDir, agent, skillset, persistActiveSkillset } = args || {};
+  const {
+    installDir,
+    agent,
+    persistActiveSkillset,
+    persistInstallMarkers,
+    skillset,
+  } = args || {};
   const normalizedInstallDir = normalizeInstallDir({
     installDir,
     agentDirNames: AgentRegistry.getInstance().getAgentDirNames(),
@@ -169,25 +177,30 @@ export const noninteractive = async (args?: {
   // Step 1: Init - Set up folders (non-interactive skips existing config capture)
   await ensureNoriInitialized({
     installDir: normalizedInstallDir,
+    persistInstallMarkers,
     skillset,
   });
 
   // Step 2: Resolve skillset and save to config
   const existingConfig = await loadConfig();
   if (existingConfig == null) {
-    log.error(
-      "No Nori configuration found. Please run 'nori-skillsets init' first.",
-    );
+    if (!isSilentMode()) {
+      log.error(
+        "No Nori configuration found. Please run 'nori-skillsets init' first.",
+      );
+    }
     process.exit(1);
   }
 
   const existingSkillset = getActiveSkillset({ config: existingConfig });
 
   if (skillset == null && existingSkillset == null) {
-    log.error(
-      "Non-interactive install requires a skillset when no existing skillset is set",
-    );
-    note("nori-skillsets install <skillset-name>", "Example");
+    if (!isSilentMode()) {
+      log.error(
+        "Non-interactive install requires a skillset when no existing skillset is set",
+      );
+      note("nori-skillsets install <skillset-name>", "Example");
+    }
     process.exit(1);
   }
 
@@ -206,7 +219,9 @@ export const noninteractive = async (args?: {
   // Reload config after saving
   const config = await loadConfig();
   if (config == null) {
-    log.error("Failed to load configuration after setup.");
+    if (!isSilentMode()) {
+      log.error("Failed to load configuration after setup.");
+    }
     process.exit(1);
   }
 
@@ -271,7 +286,9 @@ export const main = async (args?: {
       persistActiveSkillset,
     });
   } catch (err: any) {
-    log.error(err.message);
+    if (!isSilentMode()) {
+      log.error(err.message);
+    }
     process.exit(1);
   } finally {
     // Always restore console.log and silent mode when done

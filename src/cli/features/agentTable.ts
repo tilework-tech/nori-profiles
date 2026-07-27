@@ -326,6 +326,7 @@ export const buildAgentConfig = (args: {
   };
 
   const capabilities = deriveCapabilities({ definition });
+  const mcpDefinition = definition.mcp;
 
   return {
     name: definition.name,
@@ -342,6 +343,9 @@ export const buildAgentConfig = (args: {
     getSlashcommandsDir: ({ installDir }) =>
       path.join(getAgentDir({ installDir }), definition.slashcommandsDirName),
     getInstructionsFilePath,
+    ...(definition.mcp != null
+      ? { getProjectMcpFile: definition.mcp.projectFile }
+      : {}),
 
     getLoaders: () => [
       configLoader,
@@ -366,6 +370,14 @@ export const buildAgentConfig = (args: {
 
     ...(definition.externalSettingsFiles != null
       ? { getExternalSettingsFiles: definition.externalSettingsFiles }
+      : {}),
+    ...(mcpDefinition != null
+      ? {
+          getMcpManagedPaths: ({ installDir }: { installDir: string }) => [
+            mcpDefinition.projectFile({ installDir }),
+            mcpDefinition.userFile(),
+          ],
+        }
       : {}),
     ...(definition.legacyManifestPath != null
       ? { getLegacyManifestPath: definition.legacyManifestPath }

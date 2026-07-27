@@ -10,8 +10,13 @@ import * as path from "path";
 import { log, note } from "@clack/prompts";
 
 import { loadConfig } from "@/cli/config.js";
+import {
+  ensureNoriGitignore,
+  initializeGitRepository,
+} from "@/cli/features/localGitRepository.js";
 import { bold } from "@/cli/logger.js";
 import { newSkillsetFlow } from "@/cli/prompts/flows/newSkillset.js";
+import { validateNamespacedSkillsetName } from "@/cli/prompts/validators.js";
 import { namespaceCreateSkillsetName } from "@/cli/skillsetResolution.js";
 import { writeSkillsetMetadata, type NoriJson } from "@/norijson/nori.js";
 import {
@@ -21,14 +26,16 @@ import {
 } from "@/norijson/skillset.js";
 
 import type { CommandStatus } from "@/cli/commands/commandStatus.js";
+import type { NewSkillsetFlowResult } from "@/cli/prompts/flows/newSkillset.js";
 
 /**
  * Create the directory and nori.json for a new skillset.
  *
- * This is the core creation logic shared by `nori-skillsets new` and
- * the `--new` flag on `nori-skillsets external`.  Callers are responsible
- * for validation (e.g. checking the directory does not already exist)
- * and any user-facing messaging beyond what this function does.
+ * This is the manifest-only creation logic used by the `--new` flag on
+ * `nori-skillsets external`. Callers are responsible for validation (e.g.
+ * checking the directory does not already exist) and any user-facing
+ * messaging beyond what this function does. The `new` command uses its own
+ * transactional path because it also initializes Git.
  *
  * @param args - The function arguments
  * @param args.destPath - Absolute path to the new skillset directory
@@ -58,9 +65,36 @@ export const createEmptySkillset = async (args: {
   });
 };
 
-export const newSkillsetMain = async (): Promise<CommandStatus> => {
-  // Collect metadata from user
-  const flowResult = await newSkillsetFlow();
+export const newSkillsetMain = async (
+  args: { skillsetName?: string | null } = {},
+): Promise<CommandStatus> => {
+  const { skillsetName = null } = args;
+
+  let flowResult: NewSkillsetFlowResult | null;
+  if (skillsetName == null) {
+    flowResult = await newSkillsetFlow();
+  } else {
+    const validationError = validateNamespacedSkillsetName({
+      value: skillsetName,
+    });
+    if (validationError != null) {
+      log.error(validationError);
+      return {
+        success: false,
+        cancelled: false,
+        message: validationError,
+      };
+    }
+    flowResult = {
+      name: skillsetName.trim(),
+      description: null,
+      license: null,
+      keywords: null,
+      version: null,
+      repository: null,
+      statusMessage: "Skillset metadata collected",
+    };
+  }
 
   if (flowResult == null) {
     // User cancelled
@@ -121,11 +155,19 @@ export const newSkillsetMain = async (): Promise<CommandStatus> => {
   // Create the skillset directory
   await fs.mkdir(destPath);
 
-  // Write nori.json
-  await writeSkillsetMetadata({
-    skillsetDir: destPath,
-    metadata,
-  });
+  try {
+    await writeSkillsetMetadata({
+      skillsetDir: destPath,
+      metadata,
+    });
+    await ensureNoriGitignore({ dir: destPath });
+    initializeGitRepository({ dir: destPath });
+  } catch (error) {
+    await fs.rm(destPath, { recursive: true, force: true }).catch(() => {
+      // Best-effort rollback; preserve the original creation error.
+    });
+    throw error;
+  }
 
   const relLocation = skillsetIdentity({ dir: destPath });
   const nextSteps = [

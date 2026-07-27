@@ -21,7 +21,9 @@ import {
   captureExistingConfig,
 } from "@/cli/features/agentOperations.js";
 import { AgentRegistry } from "@/cli/features/agentRegistry.js";
+import { withActivationTransaction } from "@/cli/features/install/activationTransaction.js";
 import { main as installMain } from "@/cli/features/install/install.js";
+import { withInstallLock } from "@/cli/features/install/installLock.js";
 import { substituteTemplatePaths } from "@/cli/features/template.js";
 import { setSilentMode, isSilentMode } from "@/cli/logger.js";
 import { switchSkillsetFlow } from "@/cli/prompts/flows/switchSkillset.js";
@@ -83,7 +85,7 @@ export const resolveRedownloadSource = async (args: {
  * @returns Command status
  */
 
-export const switchSkillsetAction = async (args: {
+const switchSkillsetActionImpl = async (args: {
   name?: string | null;
   options: { agent?: string; force?: boolean };
   program: Command;
@@ -386,43 +388,59 @@ export const switchSkillsetAction = async (args: {
     );
   }
 
-  // Broadcast switch to all configured agents
-  for (const agentName of agentNames) {
-    const agent = AgentRegistry.getInstance().get({ name: agentName });
+  // Broadcast switch to all configured agents. Activation is transactional: a
+  // failure partway through restores the previous usable state.
+  const activeName = name;
+  const agentConfigs = agentNames.map((agentName) =>
+    AgentRegistry.getInstance().get({ name: agentName }),
+  );
 
-    try {
-      // Delegate to agent's switchSkillset method
-      await switchSkillsetOp({ agent, installDir, skillsetName: name });
-    } catch (err) {
-      // On failure, show available skillsets
-      const profiles = await listSkillsets();
-      if (profiles.length > 0) {
-        log.error(`Available skillsets: ${profiles.join(", ")}`);
+  await withActivationTransaction({
+    installDir,
+    agents: agentConfigs,
+    operation: async () => {
+      for (const agentName of agentNames) {
+        const agent = AgentRegistry.getInstance().get({ name: agentName });
+
+        try {
+          // Delegate to agent's switchSkillset method
+          await switchSkillsetOp({
+            agent,
+            installDir,
+            skillsetName: activeName,
+          });
+        } catch (err) {
+          // On failure, show available skillsets
+          const profiles = await listSkillsets();
+          if (profiles.length > 0) {
+            log.error(`Available skillsets: ${profiles.join(", ")}`);
+          }
+          throw err;
+        }
+
+        // Run install in silent mode to regenerate files with new skillset
+        await installMain({
+          nonInteractive: true,
+          installDir,
+          agent: agentName,
+          silent: true,
+          skillset: activeName,
+          // The transaction owns the single active-pointer commit.
+          persistActiveSkillset: false,
+        });
       }
-      throw err;
-    }
 
-    // Run install in silent mode to regenerate files with new skillset
-    await installMain({
-      nonInteractive: true,
-      installDir,
-      agent: agentName,
-      silent: true,
-      skillset: name,
-      // A transient --install-dir switch must not clobber global activeSkillset.
-      persistActiveSkillset: resolved.source !== "cli",
-    });
-  }
-
-  // Persist activeSkillset to config unless this is a transient CLI override
-  if (resolved.source !== "cli") {
-    await updateConfig({ activeSkillset: name });
-  }
+      // Persist activeSkillset to config unless this is a transient CLI override
+      if (resolved.source !== "cli") {
+        await updateConfig({ activeSkillset: activeName });
+      }
+    },
+  });
 
   return {
     success: true,
     cancelled: false,
-    message: `Switched to skillset "${name}"`,
+    message: `Switched to skillset "${activeName}"`,
   };
 };
 
@@ -450,3 +468,10 @@ export const registerSwitchSkillsetCommand = (args: {
       },
     );
 };
+
+export const switchSkillsetAction = async (args: {
+  name?: string | null;
+  options: { agent?: string; force?: boolean };
+  program: Command;
+}): Promise<CommandStatus> =>
+  withInstallLock({ operation: () => switchSkillsetActionImpl(args) });
