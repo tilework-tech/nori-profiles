@@ -249,13 +249,11 @@ Example: {{skills_dir}}/my-skill/SKILL.md
       );
     });
 
-    it("should not expand agent conditionals inside a fenced block", () => {
+    it("should expand agent conditionals inside a fenced block", () => {
+      // Both passes treat a fence as ordinary text, so the two never disagree.
       const content = [
-        "Syntax:",
         "```markdown",
-        "{{#claude-code}}",
-        "Use TaskCreate.",
-        "{{/}}",
+        "Call {{claude-code TaskCreate}}{{codex update_plan}} first.",
         "```",
         "",
       ].join("\n");
@@ -264,76 +262,8 @@ Example: {{skills_dir}}/my-skill/SKILL.md
         content,
         installDir: "/project/.codex",
       });
-      expect(result).toBe(content);
-    });
-
-    it("should treat everything after an unclosed fence as fenced", () => {
-      const content = [
-        "```",
-        "{{codex still fenced}}",
-        "and so is this",
-        "",
-      ].join("\n");
-      expect(
-        expandAgentConditionals({ agentName: "claude-code", content }),
-      ).toBe(content);
-    });
-
-    it("should resume expanding after a fenced block closes", () => {
-      const content = [
-        "```",
-        "{{claude-code fenced}}",
-        "```",
-        "{{claude-code live}}",
-        "",
-      ].join("\n");
-      expect(
-        expandAgentConditionals({ agentName: "claude-code", content }),
-      ).toBe(["```", "{{claude-code fenced}}", "```", "live", ""].join("\n"));
-    });
-
-    it("should not let a tilde line close a backtick fence", () => {
-      const content = [
-        "```",
-        "~~~",
-        "{{claude-code still fenced}}",
-        "```",
-        "{{claude-code live}}",
-        "",
-      ].join("\n");
-      expect(
-        expandAgentConditionals({ agentName: "claude-code", content }),
-      ).toBe(
-        ["```", "~~~", "{{claude-code still fenced}}", "```", "live", ""].join(
-          "\n",
-        ),
-      );
-    });
-
-    it("should not let a shorter inner fence close a longer outer fence", () => {
-      const content = [
-        "````",
-        "```js",
-        "x",
-        "```",
-        "{{claude-code still fenced}}",
-        "````",
-        "{{claude-code live}}",
-        "",
-      ].join("\n");
-      expect(
-        expandAgentConditionals({ agentName: "claude-code", content }),
-      ).toBe(
-        [
-          "````",
-          "```js",
-          "x",
-          "```",
-          "{{claude-code still fenced}}",
-          "````",
-          "live",
-          "",
-        ].join("\n"),
+      expect(result).toBe(
+        ["```markdown", "Call update_plan first.", "```", ""].join("\n"),
       );
     });
 

@@ -23,7 +23,7 @@ Path: @/src/cli/commands/syntax
 
 ### Things to Know
 
-- **Every conditional example is inside a fenced code block, and that is load-bearing.** Conditional expansion skips fenced blocks (see @/src/cli/features/template.ts), so this reference is a fixed point of its own expansion for every agent — a property a unit test enforces. Moving an example out of a fence would cause the installer to consume it. Path placeholders are *not* fence-protected, so the placeholder list here would be rewritten if the reference were ever installed as a skill.
+- **This reference is CLI output, not shippable skill content.** Neither template pass exempts fenced code blocks (see @/src/cli/features/template.ts), so every example here — the conditionals and the placeholder list alike — would be consumed if this text were installed as a skill. Keep it on the printing path. The fences exist for readability, not protection.
 - The agent list and placeholder list are interpolated from constants, so adding an agent row or a new placeholder updates this output with no edit here. A test asserts every name in `AGENT_NAMES` appears in the command's output.
 - Command exit status is always success; there is no failure path to handle.
 

@@ -25,7 +25,6 @@ const AGENT_NAME_SET: ReadonlySet<string> = new Set(AGENT_NAMES);
 const NAME = "[A-Za-z][A-Za-z0-9_.-]*";
 const NAME_LIST = `${NAME}(?:,${NAME})*`;
 
-const FENCE_DELIMITER = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const OPEN_TAG = new RegExp(`^\\{\\{([#^])(${NAME_LIST})\\}\\}$`);
 const ELSE_TAG = new RegExp(`^\\{\\{else(?:[ \\t]+(${NAME_LIST}))?\\}\\}$`);
 const CLOSE_TAG = new RegExp(`^\\{\\{/(${NAME_LIST})?\\}\\}$`);
@@ -41,14 +40,12 @@ const ESCAPE_PLACEHOLDER = "\x00ESCAPED_VAR\x00";
 /**
  * One source line, carrying its own terminator.
  *
- * `fenced` lines sit inside a fenced code block and `literal` lines are the
- * reconstructed tags of an unclosed section. Neither is eligible for tag
- * recognition, which is what keeps a code example from being rewritten and an
- * unclosed section from being half-consumed.
+ * `literal` marks the reconstructed tags of an unclosed section, which are not
+ * eligible for tag recognition — that is what stops the inline pass from
+ * half-consuming a section the block pass already gave up on.
  */
 type Line = {
   text: string;
-  fenced: boolean;
   literal: boolean;
 };
 
@@ -60,14 +57,12 @@ type Branch<T> = {
 };
 
 /**
- * Split content into lines, tracking fenced code blocks by CommonMark rules: a
- * fence closes only on the same character, at least as long, with nothing but
- * whitespace after it.
+ * Split content into lines, each carrying its own terminator.
  *
  * @param args - Arguments object
  * @param args.content - The content to split
  *
- * @returns Lines tagged with whether they are fenced
+ * @returns The lines
  */
 const toLines = (args: { content: string }): Array<Line> => {
   const { content } = args;
@@ -75,36 +70,7 @@ const toLines = (args: { content: string }): Array<Line> => {
     return [];
   }
 
-  const lines: Array<Line> = [];
-  let fence: { char: string; length: number } | null = null;
-
-  for (const text of content.split(/(?<=\n)/)) {
-    const match = FENCE_DELIMITER.exec(text.replace(/\r?\n$/, ""));
-
-    if (fence == null) {
-      // An info string may not contain a backtick on a backtick fence.
-      if (match != null && !(match[1][0] === "`" && match[2].includes("`"))) {
-        fence = { char: match[1][0], length: match[1].length };
-        lines.push({ text, fenced: true, literal: false });
-        continue;
-      }
-      lines.push({ text, fenced: false, literal: false });
-      continue;
-    }
-
-    lines.push({ text, fenced: true, literal: false });
-
-    if (
-      match != null &&
-      match[1][0] === fence.char &&
-      match[1].length >= fence.length &&
-      match[2].trim().length === 0
-    ) {
-      fence = null;
-    }
-  }
-
-  return lines;
+  return content.split(/(?<=\n)/).map((text) => ({ text, literal: false }));
 };
 
 /**
@@ -184,8 +150,7 @@ type BlockFrame = {
 
 /**
  * Resolve standalone-line block sections. Tag lines are removed entirely so no
- * blank line is left behind, and fenced lines are passed through so a section
- * may wrap a code example.
+ * blank line is left behind.
  *
  * @param args - Arguments object
  * @param args.agentName - Agent being installed for
@@ -218,12 +183,6 @@ const expandBlocks = (args: {
   };
 
   for (const line of lines) {
-    if (line.fenced) {
-      sink().push(line);
-      recordRaw(line);
-      continue;
-    }
-
     const trimmed = line.text.trim();
     const openMatch = OPEN_TAG.exec(trimmed);
     const elseMatch = ELSE_TAG.exec(trimmed);
@@ -454,8 +413,9 @@ const withEscapedTagsPreserved = (args: {
  * Inline form:  `use the {{claude-code TaskCreate}}{{codex update_plan}}{{else your plan tool}} now`
  * Block form:   `{{#claude-code}} ... {{else codex}} ... {{else}} ... {{/}}`
  *
- * Tags naming anything other than a registered agent are left untouched, and
- * fenced code blocks are never expanded.
+ * Tags naming anything other than a registered agent are left untouched. Tags
+ * inside fenced code blocks are expanded like any other: both passes treat the
+ * document uniformly, so wrap a tag in backticks to keep it literal.
  *
  * @param args - Arguments object
  * @param args.agentName - Agent being installed for; null leaves content as-is
@@ -482,7 +442,7 @@ export const expandAgentConditionals = (args: {
     transform: ({ content: lifted }) =>
       expandBlocks({ agentName, lines: toLines({ content: lifted }), warn })
         .map((line) =>
-          line.fenced || line.literal
+          line.literal
             ? line.text
             : expandInline({ agentName, text: line.text, warn }),
         )
@@ -502,7 +462,8 @@ export const expandAgentConditionals = (args: {
  *
  * Placeholders are substituted everywhere, including inside fenced code
  * blocks, because published skillsets put runnable commands in fences. Wrap a
- * placeholder in backticks to keep it literal.
+ * placeholder in backticks to keep it literal. Agent conditionals follow the
+ * same rule, so the two passes never disagree about what a fence means.
  *
  * @param args - Arguments object
  * @param args.agentName - Agent being installed for; enables conditionals

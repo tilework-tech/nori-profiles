@@ -8,10 +8,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 
 import { syntaxMain } from "@/cli/commands/syntax/syntax.js";
 import { AGENT_NAMES } from "@/cli/features/agentNames.js";
-import {
-  TEMPLATE_PLACEHOLDER_NAMES,
-  expandAgentConditionals,
-} from "@/cli/features/template.js";
+import { TEMPLATE_PLACEHOLDER_NAMES } from "@/cli/features/template.js";
 
 describe("syntaxMain", () => {
   let written: Array<string>;
@@ -48,19 +45,6 @@ describe("syntaxMain", () => {
 
     for (const placeholder of TEMPLATE_PLACEHOLDER_NAMES) {
       expect(output).toContain(`{{${placeholder}}}`);
-    }
-  });
-
-  it("should be a fixed point of its own expansion for every agent", async () => {
-    const output = await plainReference();
-
-    // The reference teaches conditional syntax by example. If those examples
-    // are not protected, installing the reference into a skillset would eat
-    // the very syntax it documents.
-    for (const agentName of AGENT_NAMES) {
-      expect(expandAgentConditionals({ agentName, content: output })).toBe(
-        output,
-      );
     }
   });
 

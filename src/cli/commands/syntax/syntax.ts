@@ -14,9 +14,9 @@ const FENCE = "```";
 /**
  * Build the reference text.
  *
- * Every conditional example lives inside a fenced code block, which agent
- * conditional expansion skips, so this reference survives being shipped inside
- * a skillset.
+ * This is CLI output, never installed content. Expansion does not spare fenced
+ * code blocks, so the examples below would be consumed if this text were ever
+ * shipped as a skill; keep it on the printing path.
  *
  * @returns The template syntax reference
  */
@@ -72,7 +72,8 @@ const buildReference = (): string =>
     ...TEMPLATE_PLACEHOLDER_NAMES.map((name) => `{{${name}}}`),
     FENCE,
     "",
-    "Wrap a placeholder or tag in backticks to keep it literal.",
+    "Wrap a placeholder or tag in backticks to keep it literal. Fenced code",
+    "blocks are not exempt — both passes read the whole document the same way.",
   ].join("\n");
 
 /**
