@@ -20,18 +20,18 @@ The subagent-download command downloads and installs individual subagent package
 
 `subagentDownloadMain` loads config **before** parsing the spec so a bare (non-namespaced) name can resolve against the configured `defaultOrg` via `parseNamespacedPackage` (from @/src/utils/url.ts) -- passed only when no explicit `--registry` was given, with `formatDefaultOrgNotice` logged when a bare name is routed to a non-public org. It then follows the two-phase callback-driven flow pattern (search then download). The `onSearch` callback supports namespaced packages (`org/subagent-name`), explicit `--registry` URLs, and public registry fallback. It checks for existing installations via `.nori-version` files and uses semver comparison to determine if an update is available.
 
-**Flattening** is the key difference from skill-download. Subagent tarballs contain a full directory structure (including `SUBAGENT.md`), but agent installation flattens this: only the `SUBAGENT.md` content is written to `agents/<name>.md` after template substitution via `substituteTemplatePaths()`. The full directory is preserved in the skillset profile for round-tripping.
+**Flattening** is the key difference from skill-download. Subagent tarballs contain a full directory structure (including `SUBAGENT.md`), but agent installation flattens this: only the `SUBAGENT.md` content is written to `agents/<name>.md` after template substitution via `substituteTemplatePaths()`, which is passed both the target agent's `installDir` and its `name` so path placeholders and per-agent conditionals resolve for that specific agent. The full directory is preserved in the skillset profile for round-tripping.
 
 ```
 Registry tarball
     |
     +-- extracts to ~/.nori/profiles/<skillset>/subagents/<name>/  (full directory)
     |
-    +-- flattenSubagentToAgentDir()
+    +-- flattenSubagentToAgentDir()  (once per default agent)
             |
             +-- reads SUBAGENT.md from extracted directory
-            +-- applies substituteTemplatePaths()
-            +-- writes agents/<name>.md to each agent's agents/ dir
+            +-- applies substituteTemplatePaths({ agentName, installDir })
+            +-- writes agents/<name>.md to that agent's agents/ dir
 ```
 
 The `onDownload` callback handles both new installs and updates. Updates use `atomicReplaceDirWithArchive` and fresh installs use `extractArchiveToNewDir`, both from @/src/packaging/atomicReplace.ts — a failed swap restores the backup, and a failed fresh install removes the partial directory.

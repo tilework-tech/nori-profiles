@@ -45,6 +45,7 @@ const VISIBLE_SUBCOMMANDS = [
   "fork",
   "edit",
   "install-location",
+  "syntax",
   "factory-reset",
   "completion",
   "help",

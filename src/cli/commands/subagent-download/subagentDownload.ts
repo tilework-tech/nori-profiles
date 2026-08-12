@@ -49,6 +49,7 @@ import { resolveInstallDir } from "@/utils/path.js";
 import { formatDefaultOrgNotice, parseNamespacedPackage } from "@/utils/url.js";
 
 import type { CommandStatus } from "@/cli/commands/commandStatus.js";
+import type { AgentName } from "@/cli/features/agentNames.js";
 import type {
   SubagentSearchResult,
   SubagentDownloadActionResult,
@@ -81,22 +82,28 @@ const copyDirRecursive = async (args: {
  * Flatten a directory-based subagent to a single .md file for agent installation.
  * Reads SUBAGENT.md, applies template substitution, writes to agents/<name>.md.
  * @param args - The flatten parameters
+ * @param args.agentName - Agent the subagent is being installed for
  * @param args.subagentDir - The source subagent directory containing SUBAGENT.md
  * @param args.subagentName - The subagent name (used for the output filename)
  * @param args.agentsDir - The target agents directory
  * @param args.installDir - The install directory for template substitution
  */
 const flattenSubagentToAgentDir = async (args: {
+  agentName: AgentName;
   subagentDir: string;
   subagentName: string;
   agentsDir: string;
   installDir: string;
 }): Promise<void> => {
-  const { subagentDir, subagentName, agentsDir, installDir } = args;
+  const { agentName, subagentDir, subagentName, agentsDir, installDir } = args;
 
   const subagentMdPath = path.join(subagentDir, "SUBAGENT.md");
   const content = await fs.readFile(subagentMdPath, "utf-8");
-  const substituted = substituteTemplatePaths({ content, installDir });
+  const substituted = substituteTemplatePaths({
+    agentName,
+    content,
+    installDir,
+  });
 
   await fs.mkdir(agentsDir, { recursive: true });
   await fs.writeFile(path.join(agentsDir, `${subagentName}.md`), substituted);
@@ -507,6 +514,7 @@ export const subagentDownloadMain = async (args: {
               installDir: targetInstallDir,
             });
             await flattenSubagentToAgentDir({
+              agentName: primaryAgent.name,
               subagentDir: activeExtractDir,
               subagentName,
               agentsDir: primaryAgentsDir,
@@ -528,6 +536,7 @@ export const subagentDownloadMain = async (args: {
                   installDir: targetInstallDir,
                 });
                 await flattenSubagentToAgentDir({
+                  agentName: agent.name,
                   subagentDir: activeExtractDir,
                   subagentName,
                   agentsDir: agentSubagentsDir,

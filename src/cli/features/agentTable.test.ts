@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AgentName } from "./agentRegistry.js";
+import type { AgentName } from "./agentNames.js";
 
 import { AgentRegistry } from "./agentRegistry.js";
 import {

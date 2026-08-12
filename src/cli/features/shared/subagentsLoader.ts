@@ -17,9 +17,14 @@ import {
   emitSubagentContent,
   type SubagentTargetFormat,
 } from "@/cli/features/shared/subagentEmitter.js";
-import { substituteTemplatePaths } from "@/cli/features/template.js";
+import { createTemplateWarningCollector } from "@/cli/features/shared/templateWarnings.js";
+import {
+  expandAgentConditionals,
+  substituteTemplatePaths,
+} from "@/cli/features/template.js";
 import { bold } from "@/cli/logger.js";
 
+import type { AgentName } from "@/cli/features/agentNames.js";
 import type { AgentLoader } from "@/cli/features/agentRegistry.js";
 
 const SUBAGENT_MD = "SUBAGENT.md";
@@ -51,6 +56,7 @@ export const createSubagentsLoader = (args: {
 
       const registered: Array<string> = [];
       const skipped: Array<string> = [];
+      const warnings = createTemplateWarningCollector();
 
       if (configDir == null) {
         log.warn("Skillset subagents directory not found, skipping");
@@ -90,12 +96,14 @@ export const createSubagentsLoader = (args: {
           const markdownContent = await fs.readFile(subagentMdPath, "utf-8");
           await writeSubagent({
             agentDir,
+            agentName: agent.name,
             commandsDir: agent.getSlashcommandsDir({
               installDir: config.installDir,
             }),
             destAgentsDir,
             fallbackName: dirName,
             markdownContent,
+            onWarning: warnings.for({ relativePath: dirName }),
             skillsDir: agent.getSkillsDir({ installDir: config.installDir }),
             targetFormat,
           });
@@ -152,12 +160,14 @@ export const createSubagentsLoader = (args: {
         try {
           await writeSubagent({
             agentDir,
+            agentName: agent.name,
             commandsDir: agent.getSlashcommandsDir({
               installDir: config.installDir,
             }),
             destAgentsDir,
             fallbackName: subagentName,
             markdownContent: flatSubagent.markdownContent ?? null,
+            onWarning: warnings.for({ relativePath: subagentName }),
             skillsDir: agent.getSkillsDir({ installDir: config.installDir }),
             targetFormat,
             tomlContent: flatSubagent.tomlContent ?? null,
@@ -167,6 +177,8 @@ export const createSubagentsLoader = (args: {
           skipped.push(subagentName);
         }
       }
+
+      warnings.report();
 
       if (registered.length > 0) {
         const lines = registered.map((name) => `✓ ${name}`);
@@ -189,20 +201,24 @@ export const createSubagentsLoader = (args: {
 
 const writeSubagent = async (args: {
   agentDir: string;
+  agentName: AgentName;
   commandsDir: string;
   destAgentsDir: string;
   fallbackName: string;
   markdownContent?: string | null;
+  onWarning?: ((args: { message: string }) => void) | null;
   skillsDir: string;
   targetFormat: SubagentTargetFormat;
   tomlContent?: string | null;
 }) => {
   const {
     agentDir,
+    agentName,
     commandsDir,
     destAgentsDir,
     fallbackName,
     markdownContent,
+    onWarning,
     skillsDir,
     targetFormat,
     tomlContent,
@@ -214,9 +230,11 @@ const writeSubagent = async (args: {
     }
 
     const substituted = substituteTemplatePaths({
+      agentName,
       content: markdownContent,
       commandsDir,
       installDir: agentDir,
+      onWarning,
       skillsDir,
     });
     await fs.writeFile(
@@ -226,11 +244,27 @@ const writeSubagent = async (args: {
     return;
   }
 
+  // Conditionals must resolve while the body still has real newlines: the
+  // codex-toml emitter collapses it into a single escaped TOML string.
   const emitted = emitSubagentContent({
     fallbackName,
-    markdownContent,
+    markdownContent:
+      markdownContent == null
+        ? markdownContent
+        : expandAgentConditionals({
+            agentName,
+            content: markdownContent,
+            onWarning,
+          }),
     targetFormat,
-    tomlContent,
+    tomlContent:
+      tomlContent == null
+        ? tomlContent
+        : expandAgentConditionals({
+            agentName,
+            content: tomlContent,
+            onWarning,
+          }),
   });
   if (emitted == null) {
     throw new Error(`Missing subagent source for ${fallbackName}`);

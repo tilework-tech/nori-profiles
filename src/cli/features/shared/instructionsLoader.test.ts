@@ -289,6 +289,32 @@ describe("createInstructionsLoader", () => {
       expect(content).toContain(path.join(agentDir, "skills"));
     });
 
+    it("should expand agent conditionals in the managed instructions block", async () => {
+      const loader = createInstructionsLoader({});
+      const config = createTestConfig({
+        installDir: tempDir,
+        activeSkillset: "conditional-instructions-test",
+      });
+      const skillset = await createTestSkillset({
+        skillsetsDir: noriProfilesDir,
+        skillsetName: "conditional-instructions-test",
+        configContent: [
+          "Track work with {{claude-code TaskCreate}}{{codex update_plan}}.",
+          "{{#codex}}",
+          "Codex-only guidance.",
+          "{{/}}",
+        ].join("\n"),
+      });
+
+      await loader.run({ agent, config, skillset });
+
+      const content = await fs.readFile(instructionsFile, "utf-8");
+      expect(content).toContain("Track work with TaskCreate.");
+      expect(content).not.toContain("update_plan");
+      expect(content).not.toContain("Codex-only guidance.");
+      expect(content).not.toContain("{{");
+    });
+
     it("should use agent-specific skills and commands paths when they differ from agentDir", async () => {
       const loader = createInstructionsLoader({});
       const piAgentDir = path.join(tempDir, ".pi");

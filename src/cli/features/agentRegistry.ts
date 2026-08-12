@@ -12,26 +12,8 @@ import {
 } from "@/cli/features/agentTable.js";
 
 import type { Config } from "@/cli/config.js";
+import type { AgentName } from "@/cli/features/agentNames.js";
 import type { Skillset } from "@/norijson/skillset.js";
-
-/**
- * Canonical agent names used as UIDs in the registry.
- * Each AgentConfig.name must match one of these values.
- */
-export type AgentName =
-  | "claude-code"
-  | "cline"
-  | "codex"
-  | "cursor-agent"
-  | "droid"
-  | "gemini-cli"
-  | "github-copilot"
-  | "goose"
-  | "kilo"
-  | "kimi-cli"
-  | "opencode"
-  | "openclaw"
-  | "pi";
 
 /**
  * Unified loader interface for AgentConfig

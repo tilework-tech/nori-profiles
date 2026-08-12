@@ -8,11 +8,13 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 
+import { log } from "@clack/prompts";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import { skillsLoader } from "@/cli/features/shared/skillsLoader.js";
 
 import type { Config } from "@/cli/config.js";
+import type { AgentName } from "@/cli/features/agentNames.js";
 import type { AgentConfig } from "@/cli/features/agentRegistry.js";
 import type { Skillset } from "@/norijson/skillset.js";
 
@@ -45,11 +47,14 @@ vi.mock("@/cli/features/bundled-skillsets/installer.js", () => ({
 
 // ---- helpers ----------------------------------------------------------------
 
-const createTestAgent = (args: { agentDir: string }): AgentConfig => {
-  const { agentDir } = args;
+const createTestAgent = (args: {
+  agentDir: string;
+  name?: AgentName | null;
+}): AgentConfig => {
+  const { agentDir, name } = args;
   const dirName = path.basename(agentDir);
   return {
-    name: "claude-code",
+    name: name ?? "claude-code",
     displayName: "Test Agent",
     supportTier: "experimental",
     capabilities: {
@@ -237,6 +242,86 @@ describe("skillsLoader", () => {
       expect(content).toContain(
         path.join(agentDir, "skills", "some-skill", "SKILL.md"),
       );
+    });
+
+    it("should install a different variant of the same skill per agent", async () => {
+      const skillSource = [
+        "---",
+        "name: Task Tracking",
+        "description: How to track work.",
+        "---",
+        "Track work with {{claude-code TaskCreate}}{{codex update_plan}}{{else your plan tool}} first.",
+        "{{#codex}}",
+        "Codex-only guidance.",
+        "{{/}}",
+      ].join("\n");
+
+      const readInstalledFor = async (agentName: AgentName) => {
+        const perAgentInstallDir = path.join(tempDir, agentName);
+        const perAgentDir = path.join(perAgentInstallDir, ".test-agent");
+        await fs.mkdir(perAgentDir, { recursive: true });
+
+        const config = createTestConfig({
+          installDir: perAgentInstallDir,
+          activeSkillset: `per-agent-${agentName}`,
+        });
+        const skillset = await createTestSkillset({
+          skillsetsDir: noriProfilesDir,
+          skillsetName: `per-agent-${agentName}`,
+          skills: { "task-tracking": skillSource },
+        });
+
+        await skillsLoader.run({
+          agent: createTestAgent({ agentDir: perAgentDir, name: agentName }),
+          config,
+          skillset,
+        });
+
+        return fs.readFile(
+          path.join(perAgentDir, "skills", "task-tracking", "SKILL.md"),
+          "utf-8",
+        );
+      };
+
+      const header = [
+        "---",
+        "name: Task Tracking",
+        "description: How to track work.",
+        "---",
+      ].join("\n");
+
+      expect(await readInstalledFor("claude-code")).toBe(
+        `${header}\nTrack work with TaskCreate first.\n`,
+      );
+      expect(await readInstalledFor("codex")).toBe(
+        `${header}\nTrack work with update_plan first.\nCodex-only guidance.\n`,
+      );
+      expect(await readInstalledFor("goose")).toBe(
+        `${header}\nTrack work with your plan tool first.\n`,
+      );
+    });
+
+    it("should warn with the file path when a skill misspells an agent name", async () => {
+      const config = createTestConfig({
+        installDir: tempDir,
+        activeSkillset: "typo-test",
+      });
+      const skillset = await createTestSkillset({
+        skillsetsDir: noriProfilesDir,
+        skillsetName: "typo-test",
+        skills: {
+          "task-tracking": "Use {{claude_code TaskCreate}} to plan.",
+        },
+      });
+
+      await skillsLoader.run({ agent, config, skillset });
+
+      const warned = vi
+        .mocked(log.warn)
+        .mock.calls.map((call) => String(call[0]))
+        .join("\n");
+      expect(warned).toContain("claude_code");
+      expect(warned).toContain("task-tracking");
     });
 
     it("should copy non-.md files directly without template substitution", async () => {

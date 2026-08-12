@@ -41,6 +41,7 @@ import {
 import { resolveInstallDir } from "@/utils/path.js";
 
 import type { CommandStatus } from "@/cli/commands/commandStatus.js";
+import type { AgentName } from "@/cli/features/agentNames.js";
 import type { Command } from "commander";
 
 import { cloneRepo, cleanupClone, GitCloneError } from "./gitClone.js";
@@ -82,24 +83,34 @@ const copyDirRecursive = async (args: {
 /**
  * Apply template substitution to all .md files in a directory recursively
  * @param args - The function arguments
+ * @param args.agentName - Agent the content is being installed for
  * @param args.dir - Directory to process
  * @param args.installDir - The .claude directory path for template substitution
  */
 const applyTemplateSubstitutionToDir = async (args: {
+  agentName: AgentName;
   dir: string;
   installDir: string;
 }): Promise<void> => {
-  const { dir, installDir } = args;
+  const { agentName, dir, installDir } = args;
 
   const entries = await fs.readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
     const entryPath = path.join(dir, entry.name);
 
     if (entry.isDirectory()) {
-      await applyTemplateSubstitutionToDir({ dir: entryPath, installDir });
+      await applyTemplateSubstitutionToDir({
+        agentName,
+        dir: entryPath,
+        installDir,
+      });
     } else if (entry.name.endsWith(".md")) {
       const content = await fs.readFile(entryPath, "utf-8");
-      const substituted = substituteTemplatePaths({ content, installDir });
+      const substituted = substituteTemplatePaths({
+        agentName,
+        content,
+        installDir,
+      });
       await fs.writeFile(entryPath, substituted);
     }
   }
@@ -215,30 +226,33 @@ const installSkill = async (args: {
     }
   }
 
-  // Apply template substitution to .md files in the live copy for primary agent
+  // Broadcast the pristine copy to every other agent before substituting
+  // anything. Each agent resolves its own conditionals from the same source;
+  // copying after substitution would hand them the primary agent's variant.
   const agents = args.agents;
-  const primaryAgentDir = agents[0].getAgentDir({ installDir });
-  await applyTemplateSubstitutionToDir({
-    dir: targetDir,
-    installDir: primaryAgentDir,
-  });
+  const installs = [{ agent: agents[0], dir: targetDir }];
 
-  // Broadcast: copy skill to all other agents' skills directories
   for (const agent of agents.slice(1)) {
-    const agentSkillsDir = agent.getSkillsDir({ installDir });
-    const agentTargetDir = path.join(agentSkillsDir, skillDirName);
+    const agentTargetDir = path.join(
+      agent.getSkillsDir({ installDir }),
+      skillDirName,
+    );
     try {
       await fs.rm(agentTargetDir, { recursive: true, force: true });
       await copyDirRecursive({ src: targetDir, dest: agentTargetDir });
-      const agentDir = agent.getAgentDir({ installDir });
-      await applyTemplateSubstitutionToDir({
-        dir: agentTargetDir,
-        installDir: agentDir,
-      });
+      installs.push({ agent, dir: agentTargetDir });
     } catch (copyErr) {
       const msg = copyErr instanceof Error ? copyErr.message : String(copyErr);
       log.warn(`Could not copy skill to ${agent.name}: ${msg}`);
     }
+  }
+
+  for (const install of installs) {
+    await applyTemplateSubstitutionToDir({
+      agentName: install.agent.name,
+      dir: install.dir,
+      installDir: install.agent.getAgentDir({ installDir }),
+    });
   }
 
   log.success(`Installed skill "${skill.name}" from GitHub`);

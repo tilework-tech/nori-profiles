@@ -36,6 +36,7 @@ import {
   registerNoriSkillsetsLogoutCommand,
   registerNoriSkillsetsSearchCommand,
   registerNoriSkillsetsSwitchSkillsetCommand,
+  registerNoriSkillsetsSyntaxCommand,
   registerNoriSkillsetsUnlinkCommand,
   registerNoriSkillsetsUploadCommand,
   registerNoriSkillsetsUploadSkillCommand,
@@ -169,6 +170,21 @@ Examples:
   $ nori-skillsets clear                                     # remove Nori-managed config from install directory
   $ nori-skillsets factory-reset claude-code                # remove all Claude Code config
   $ nori-skillsets config                                   # configure default agent and install directory
+  $ nori-skillsets syntax                                   # full skillset template syntax reference
+
+Skillset template syntax:
+  Skill and subagent markdown can carry per-agent variants. Only the block
+  matching the agent being installed for survives.
+
+    use the {{claude-code TaskCreate}}{{codex update_plan}}{{else your plan tool}} tool
+
+    {{#claude-code}}
+    Multi-line guidance for Claude Code.
+    {{else codex}}
+    Multi-line guidance for Codex.
+    {{/}}
+
+  Run 'nori-skillsets syntax' for the full reference.
 `,
   );
 
@@ -209,6 +225,7 @@ registerNoriSkillsetsClearCommand({ program });
 registerNoriSkillsetsClearCurrentCommand({ program });
 registerNoriSkillsetsFactoryResetCommand({ program });
 registerNoriSkillsetsConfigCommand({ program });
+registerNoriSkillsetsSyntaxCommand({ program });
 
 program.parse(process.argv);
 

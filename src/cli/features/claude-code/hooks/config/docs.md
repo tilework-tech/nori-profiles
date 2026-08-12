@@ -22,6 +22,8 @@ A `notify-hook.sh` shell script (not shown as TypeScript) sends desktop notifica
 
 ### Things to Know
 
-All hooks exit with code 0 even on error to avoid disrupting Claude Code sessions. The commit-author hook protects escaped template variables (backtick-wrapped `{{var}}`) from substitution. The update-check hook respects the `autoupdate: "disabled"` config setting and triggers background cache refreshes when the version cache is stale.
+All hooks exit with code 0 even on error to avoid disrupting Claude Code sessions. The update-check hook respects the `autoupdate: "disabled"` config setting and triggers background cache refreshes when the version cache is stale.
+
+These hooks do no skillset-template processing of any kind. Placeholder substitution, backtick escaping, and agent-conditional expansion all live in @/src/cli/features/template.ts and run at install time, long before a hook ever executes.
 
 Created and maintained by Nori.

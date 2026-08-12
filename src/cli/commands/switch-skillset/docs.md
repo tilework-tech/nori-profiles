@@ -40,7 +40,7 @@ agents/my-agent.md             -->  subagents/my-agent.md        (flat file, che
 agents/my-agent.md             -->  subagents/my-agent/SUBAGENT.md  (directory-based, fallback)
 ```
 
-For subagents, the flat file path is checked first via `fs.access`. If it does not exist, the directory-based path (`subagents/<name>/SUBAGENT.md`) is tried. If neither exists, `null` is returned. Template substitution is applied to `.md` files to match the install-time transformation.
+For subagents, the flat file path is checked first via `fs.access`. If it does not exist, the directory-based path (`subagents/<name>/SUBAGENT.md`) is tried. If neither exists, `null` is returned. Template substitution is applied to `.md` files to match the install-time transformation, and it is passed the diffed agent's `name` as well as its directory: the installer resolves per-agent conditionals (`{{claude-code ...}}`, `{{#codex}}...{{/}}`) at write time, so omitting the name would make the "original" side of the displayed diff differ from what was actually installed and show spurious changes for any file using conditionals. (Change *detection* itself is unaffected — that compares manifest hashes, not this callback.) See @/src/cli/features/template.ts.
 
 **Non-interactive flow**: Checks for local changes on the first default agent. If changes exist and `--force` is not set, it throws. Otherwise, it iterates all default agents, calling `switchSkillsetOp` then `installMain` for each.
 
