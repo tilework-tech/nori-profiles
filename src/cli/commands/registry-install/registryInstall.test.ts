@@ -146,15 +146,29 @@ describe("registry-install", () => {
     expect(installMain).toHaveBeenCalledWith({
       nonInteractive: true,
       installDir: "/mock-home",
-      skillset: "senior-swe",
+      skillset: "public/senior-swe",
       agent: "claude-code",
       silent: null,
+      persistActiveSkillset: true,
     });
 
     // Should NOT call switchSkillset or second install (initial install handles it)
     expect(mockSwitchSkillset).not.toHaveBeenCalled();
     expect(installMain).toHaveBeenCalledTimes(1);
     expect(registryDownloadMain).toHaveBeenCalledTimes(1);
+  });
+
+  it("should not persist global activeSkillset for a transient --install-dir install", async () => {
+    // An explicit --install-dir makes the install transient; it must not clobber
+    // the user's global activeSkillset. Pass the flag through to installMain.
+    await registryInstallMain({
+      packageSpec: "senior-swe",
+      installDir: "/custom/worktree",
+    });
+
+    expect(installMain).toHaveBeenCalledWith(
+      expect.objectContaining({ persistActiveSkillset: false }),
+    );
   });
 
   it("should download skillset, switch skillset, and regenerate when existing installation detected", async () => {
@@ -180,7 +194,7 @@ describe("registry-install", () => {
     expect(mockSwitchSkillset).toHaveBeenCalledWith(
       expect.objectContaining({
         installDir: "/mock-home",
-        skillsetName: "senior-swe",
+        skillsetName: "public/senior-swe",
       }),
     );
 
@@ -191,7 +205,8 @@ describe("registry-install", () => {
       installDir: "/mock-home",
       agent: "claude-code",
       silent: true,
-      skillset: "senior-swe",
+      skillset: "public/senior-swe",
+      persistActiveSkillset: true,
     });
 
     expect(registryDownloadMain).toHaveBeenCalledTimes(1);
@@ -233,9 +248,10 @@ describe("registry-install", () => {
     expect(installMain).toHaveBeenCalledWith({
       nonInteractive: true,
       installDir: "/mock-home",
-      skillset: "product-manager",
+      skillset: "public/product-manager",
       agent: "claude-code",
       silent: null,
+      persistActiveSkillset: true,
     });
   });
 
@@ -256,9 +272,10 @@ describe("registry-install", () => {
     expect(installMain).toHaveBeenCalledWith({
       nonInteractive: true,
       installDir: "/mock-home",
-      skillset: "documenter",
+      skillset: "public/documenter",
       agent: "claude-code",
       silent: null,
+      persistActiveSkillset: true,
     });
   });
 
@@ -338,7 +355,7 @@ describe("registry-install", () => {
     expect(mockSwitchSkillset).toHaveBeenCalledWith(
       expect.objectContaining({
         installDir: "/mock-home",
-        skillsetName: "senior-swe",
+        skillsetName: "public/senior-swe",
       }),
     );
 
@@ -403,7 +420,7 @@ describe("registry-install", () => {
 
     expect(result.success).toBe(true);
     expect(result.message).toBe(
-      `Installed and activated skillset "${bold({ text: "senior-swe" })}"`,
+      `Installed and activated skillset "${bold({ text: "public/senior-swe" })}"`,
     );
   });
 
@@ -416,7 +433,7 @@ describe("registry-install", () => {
 
     expect(result.success).toBe(true);
     expect(result.message).toBe(
-      `Installed and activated skillset "${bold({ text: "senior-swe" })}"`,
+      `Installed and activated skillset "${bold({ text: "public/senior-swe" })}"`,
     );
   });
 
@@ -446,7 +463,7 @@ describe("registry-install", () => {
     );
   });
 
-  it("should install a public/ skillset under its bare name while passing the namespaced spec to download", async () => {
+  it("should install a public/ skillset under its public/ namespace while passing the namespaced spec to download", async () => {
     await registryInstallMain({
       packageSpec: "public/senior-swe",
     });
@@ -455,11 +472,11 @@ describe("registry-install", () => {
       expect.objectContaining({ packageSpec: "public/senior-swe" }),
     );
     expect(installMain).toHaveBeenCalledWith(
-      expect.objectContaining({ skillset: "senior-swe" }),
+      expect.objectContaining({ skillset: "public/senior-swe" }),
     );
   });
 
-  it("should record the bare public name as the active skillset on the switch path", async () => {
+  it("should record the qualified public name as the active skillset on the switch path", async () => {
     vi.mocked(hasExistingInstallation).mockReturnValueOnce(true);
 
     await registryInstallMain({
@@ -467,9 +484,27 @@ describe("registry-install", () => {
     });
 
     expect(mockSwitchSkillset).toHaveBeenCalledWith(
-      expect.objectContaining({ skillsetName: "senior-swe" }),
+      expect.objectContaining({ skillsetName: "public/senior-swe" }),
     );
-    expect(updateConfig).toHaveBeenCalledWith({ activeSkillset: "senior-swe" });
+    expect(updateConfig).toHaveBeenCalledWith({
+      activeSkillset: "public/senior-swe",
+    });
+  });
+
+  it("installs an explicit public/ skillset as public/ even when a defaultOrg is configured", async () => {
+    vi.mocked(hasExistingInstallation).mockReturnValueOnce(true);
+    vi.mocked(loadConfig).mockResolvedValueOnce({
+      installDir: "/mock-home",
+      defaultOrg: "myorg",
+    } as never);
+
+    await registryInstallMain({ packageSpec: "public/senior-swe" });
+
+    // A configured defaultOrg must not reroute an explicit public/ install: the
+    // qualified public name flows to the switch op, not myorg/senior-swe.
+    expect(mockSwitchSkillset).toHaveBeenCalledWith(
+      expect.objectContaining({ skillsetName: "public/senior-swe" }),
+    );
   });
 
   it("should keep the org prefix so an org skillset installs under its nested name", async () => {

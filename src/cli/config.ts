@@ -11,7 +11,7 @@ import addFormats from "ajv-formats";
 
 import { toRegistryAuth } from "@/api/authCredentials.js";
 import { AgentRegistry } from "@/cli/features/agentRegistry.js";
-import { canonicalSkillsetName } from "@/norijson/skillset.js";
+import { canonicalSkillsetName } from "@/cli/skillsetResolution.js";
 import { extractOrgIdFromApiToken } from "@/utils/apiToken.js";
 import { getHomeDir } from "@/utils/home.js";
 import { readJsonObjectFile, writeJsonFileAtomic } from "@/utils/jsonFile.js";
@@ -32,6 +32,11 @@ export type Config = {
   defaultAgents?: Array<string> | null;
   /** The currently active skillset, shared across all agents */
   activeSkillset?: string | null;
+  /**
+   * Runtime-only: when false, loaders must not persist `activeSkillset` to
+   * disk (transient `--install-dir` switch). Never written to `.nori-config.json`.
+   */
+  persistActiveSkillset?: boolean | null;
   /** Organization ID for transcript uploads (e.g., "myorg" -> https://myorg.noriskillsets.dev) */
   transcriptDestination?: string | null;
   /** Whether to delete transcript files after successful upload */
