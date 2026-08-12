@@ -22,7 +22,7 @@ The pipeline in `externalMain` is: parse source -> resolve install/skillset targ
 
 `gitClone.ts` performs a shallow `git clone --depth 1` to a temp directory with a 60-second timeout. `cleanupClone` validates the path is within the system temp directory before deletion to prevent accidental removal of non-temp paths.
 
-**Multi-agent broadcasting**: The `installSkill` function accepts an `agents` array parameter. It installs to the primary agent's skills directory first, applies template substitution, then copies the skill directory to each additional agent's skills directory with agent-specific template substitution. Copy failures for secondary agents emit warnings via `log.warn` but do not fail the install. The `externalMain` function resolves the agents list and ensures all agents' skills directories exist before cloning begins.
+**Multi-agent broadcasting**: The `installSkill` function accepts an `agents` array parameter. It installs to the primary agent's skills directory first, applies template substitution, then copies the skill directory to each additional agent's skills directory with agent-specific template substitution. `applyTemplateSubstitutionToDir` carries the target agent's `name` down the recursion alongside its `installDir`, so each copy resolves both path placeholders and per-agent conditionals for that agent — a GitHub-hosted skill written with `{{claude-code ...}}` / `{{#codex}}...{{/}}` lands as different text in each harness. Copy failures for secondary agents emit warnings via `log.warn` but do not fail the install. The `externalMain` function resolves the agents list and ensures all agents' skills directories exist before cloning begins.
 
 ### Things to Know
 

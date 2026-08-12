@@ -202,6 +202,30 @@ describe("createSlashCommandsLoader", () => {
       );
       expect(content).not.toContain("{{profiles_dir}}");
     });
+
+    it("should expand agent conditionals in copied slash commands", async () => {
+      const loader = createSlashCommandsLoader({ managedDirs: ["commands"] });
+      const config = createTestConfig({
+        installDir: tempDir,
+        activeSkillset: "conditional-cmd-test",
+      });
+      const skillset = await createTestSkillset({
+        skillsetsDir: noriProfilesDir,
+        skillsetName: "conditional-cmd-test",
+        slashcommands: {
+          "plan.md":
+            "Plan with {{claude-code TaskCreate}}{{codex update_plan}} first.\n",
+        },
+      });
+
+      await loader.run({ agent, config, skillset });
+
+      const content = await fs.readFile(
+        path.join(commandsDir, "plan.md"),
+        "utf-8",
+      );
+      expect(content).toBe("Plan with TaskCreate first.\n");
+    });
   });
 
   describe("filtering docs.md", () => {

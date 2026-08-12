@@ -35,6 +35,7 @@ _nori_skillsets() {
     'fork:Fork an existing skillset to a new name'
     'edit:Open a skillset folder in VS Code'
     'install-location:Display Nori installation directories'
+    'syntax:Show the skillset template syntax'
     'clear:Remove all Nori-managed configuration from the install directory'
     'clear-current:Remove all Nori-managed configuration from current directory and ancestors'
     'factory-reset:Remove all configuration for a given agent'

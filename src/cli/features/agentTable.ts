@@ -23,11 +23,11 @@ import { createSlashCommandsLoader } from "@/cli/features/shared/slashCommandsLo
 import { createSubagentsLoader } from "@/cli/features/shared/subagentsLoader.js";
 import { getHomeDir } from "@/utils/home.js";
 
+import type { AgentName } from "@/cli/features/agentNames.js";
 import type {
   AgentCapabilities,
   AgentConfig,
   AgentLoader,
-  AgentName,
   AgentSupportTier,
 } from "@/cli/features/agentRegistry.js";
 import type { SubagentTargetFormat } from "@/cli/features/shared/subagentEmitter.js";

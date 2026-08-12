@@ -18,7 +18,7 @@ The command resolves default agents via `getDefaultAgents({ config })` from `@/s
 
 The `onDownload` callback installs the tarball via the atomic-replacement primitives from @/src/packaging/atomicReplace.ts (`atomicReplaceDirWithArchive` for updates, `extractArchiveToNewDir` for fresh installs), writes `.nori-version` provenance via `writeVersionInfo`, copies the skill to the skillset's `skills/` directory for persistence, applies template substitution on `.md` files, and updates both the skill dependency manifest and `nori.json`.
 
-**Multi-agent broadcasting**: After installing to the primary agent's skills directory and applying template substitution, the command copies the skill directory to each additional default agent's skills directory, re-applying template substitution with each agent's own `installDir` so that `{{skills_dir}}` and similar placeholders resolve to agent-specific paths. Copy failures for secondary agents emit warnings but do not fail the command.
+**Multi-agent broadcasting**: After installing to the primary agent's skills directory and applying template substitution, the command copies the skill directory to each additional default agent's skills directory, re-applying template substitution with each agent's own `installDir` **and** its `name`, so `{{skills_dir}}` and similar placeholders resolve to agent-specific paths and per-agent conditionals (`{{claude-code TaskCreate}}{{codex update_plan}}`, `{{#codex}}...{{/}}`) resolve to that agent's variant. A downloaded skill can therefore be authored once and still read correctly in every harness. Copy failures for secondary agents emit warnings but do not fail the command.
 
 ### Things to Know
 

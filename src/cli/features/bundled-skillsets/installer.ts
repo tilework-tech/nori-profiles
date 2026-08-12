@@ -10,6 +10,9 @@ import { fileURLToPath } from "url";
 
 import { substituteTemplatePaths } from "@/cli/features/template.js";
 
+import type { AgentName } from "@/cli/features/agentNames.js";
+import type { TemplateWarningCollector } from "@/cli/features/shared/templateWarnings.js";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -17,7 +20,7 @@ const BUNDLED_SKILLS_DIR = path.join(__dirname, "skills");
 
 /**
  * Get the path to the bundled skills directory.
- * Used by the claudemd loader to include bundled skills in the skills list.
+ * Used by the instructions loader to include bundled skills in the skills list.
  *
  * @returns Absolute path to the bundled skills directory
  */
@@ -27,20 +30,32 @@ export const getBundledSkillsDir = (): string => BUNDLED_SKILLS_DIR;
  * Copy a directory recursively, applying template substitution to markdown files
  *
  * @param args - Copy arguments
+ * @param args.agentName - Agent being installed for
  * @param args.commandsDir - Optional installed slash-commands directory
  * @param args.src - Source directory path
  * @param args.dest - Destination directory path
  * @param args.installDir - Installation directory for template substitution
+ * @param args.onWarningFor - Builds a warning sink for a given relative path
  * @param args.skillsDir - Installed skills directory
  */
 const copyDirWithTemplateSubstitution = async (args: {
+  agentName?: AgentName | null;
   commandsDir?: string | null;
   src: string;
   dest: string;
   installDir: string;
+  onWarningFor?: TemplateWarningCollector["for"] | null;
   skillsDir: string;
 }): Promise<void> => {
-  const { src, dest, commandsDir, installDir, skillsDir } = args;
+  const {
+    agentName,
+    src,
+    dest,
+    commandsDir,
+    installDir,
+    onWarningFor,
+    skillsDir,
+  } = args;
 
   await fs.mkdir(dest, { recursive: true });
 
@@ -52,18 +67,24 @@ const copyDirWithTemplateSubstitution = async (args: {
 
     if (entry.isDirectory()) {
       await copyDirWithTemplateSubstitution({
+        agentName,
         commandsDir,
         src: srcPath,
         dest: destPath,
         installDir,
+        onWarningFor,
         skillsDir,
       });
     } else if (entry.name.endsWith(".md")) {
       const content = await fs.readFile(srcPath, "utf-8");
       const substituted = substituteTemplatePaths({
+        agentName,
         content,
         commandsDir,
         installDir,
+        onWarning: onWarningFor?.({
+          relativePath: path.relative(skillsDir, destPath),
+        }),
         skillsDir,
       });
       await fs.writeFile(destPath, substituted);
@@ -79,16 +100,21 @@ const copyDirWithTemplateSubstitution = async (args: {
  * already exist at the destination (skillset-provided skills take precedence).
  *
  * @param args - Function arguments
+ * @param args.agentName - Agent being installed for
  * @param args.commandsDir - Optional installed slash-commands directory
  * @param args.destSkillsDir - Destination skills directory (e.g. ~/.claude/skills)
  * @param args.installDir - Agent config directory for template substitution
+ * @param args.onWarningFor - Builds a warning sink for a given relative path
  */
 export const copyBundledSkills = async (args: {
+  agentName?: AgentName | null;
   commandsDir?: string | null;
   destSkillsDir: string;
   installDir: string;
+  onWarningFor?: TemplateWarningCollector["for"] | null;
 }): Promise<void> => {
-  const { commandsDir, destSkillsDir, installDir } = args;
+  const { agentName, commandsDir, destSkillsDir, installDir, onWarningFor } =
+    args;
 
   let entries;
   try {
@@ -114,10 +140,12 @@ export const copyBundledSkills = async (args: {
 
     const srcPath = path.join(BUNDLED_SKILLS_DIR, entry.name);
     await copyDirWithTemplateSubstitution({
+      agentName,
       commandsDir,
       src: srcPath,
       dest: destPath,
       installDir,
+      onWarningFor,
       skillsDir: destSkillsDir,
     });
   }

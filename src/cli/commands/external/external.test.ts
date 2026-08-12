@@ -3,6 +3,7 @@
  */
 
 import { execFileSync } from "child_process";
+import * as nodeFs from "fs";
 import * as fs from "fs/promises";
 import { tmpdir } from "os";
 import * as path from "path";
@@ -204,6 +205,59 @@ describe("externalMain", () => {
 
     const allErrorOutput = getClackErrorOutput();
     expect(allErrorOutput.length).toBeGreaterThan(0);
+  });
+
+  it("should install a per-agent variant of the skill for every broadcast agent", async () => {
+    // Each agent must resolve conditionals from the pristine source. Copying an
+    // already-substituted directory would give them the first agent's variant.
+    const skillSource = [
+      "---",
+      "name: task-tracking",
+      "description: How to track work.",
+      "---",
+      "Track work with {{claude-code TaskCreate}}{{codex update_plan}} first.",
+      "{{#codex}}",
+      "Codex only.",
+      "{{/}}",
+    ].join("\n");
+
+    vi.mocked(loadConfig).mockResolvedValue({
+      installDir: testDir,
+      defaultAgents: ["claude-code", "codex"],
+    });
+    vi.mocked(execFileSync).mockImplementation(((
+      _command: string,
+      argv: Array<string>,
+    ) => {
+      const cloneDir = argv[argv.length - 1];
+      const dest = path.join(cloneDir, "skills", "task-tracking");
+      nodeFs.mkdirSync(dest, { recursive: true });
+      nodeFs.writeFileSync(path.join(dest, "SKILL.md"), skillSource);
+      return Buffer.from("");
+    }) as never);
+
+    await externalMain({
+      source: "owner/repo",
+      installDir: testDir,
+      all: true,
+      extract: true,
+    });
+
+    const installed = async (agentDir: string) =>
+      fs.readFile(
+        path.join(testDir, agentDir, "skills", "task-tracking", "SKILL.md"),
+        "utf-8",
+      );
+
+    const claude = await installed(".claude");
+    expect(claude).toContain("Track work with TaskCreate first.");
+    expect(claude).not.toContain("update_plan");
+    expect(claude).not.toContain("Codex only.");
+
+    const codex = await installed(".codex");
+    expect(codex).toContain("Track work with update_plan first.");
+    expect(codex).not.toContain("TaskCreate");
+    expect(codex).toContain("Codex only.");
   });
 
   it("should write nori.json with source info in installed skill directory", async () => {

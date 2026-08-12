@@ -109,6 +109,30 @@ This separation lets you maintain multiple Skillsets, target multiple agents at 
 
 Manual changes made to an agent's installed directory (e.g., `.claude/`, `.cursor/`, `.codex/`) will be removed when switching skillsets. Manual changes should be made in the `~/.nori/profiles/<skillset-name>/` directory instead.
 
+### Writing content for more than one agent
+
+Agents name their tools differently — Claude Code has `TaskCreate`, Codex has `update_plan`. Rather than forking a skill per agent, mark the differences inline and Nori keeps only the part that applies to whichever agent it is installing for:
+
+```markdown
+Track work with {{claude-code TaskCreate}}{{codex update_plan}}{{else your plan tool}} first.
+```
+
+For anything longer than a phrase, use the block form:
+
+```markdown
+{{#claude-code}}
+Multi-line guidance for Claude Code.
+{{else codex}}
+Multi-line guidance for Codex.
+{{else}}
+Guidance for everyone else.
+{{/}}
+```
+
+The same file installed for Claude Code and for Codex produces two different results. Tags naming anything that is not a known agent are left alone, and fenced code blocks are never touched.
+
+Run `nori-skillsets syntax` for the full reference, including comma lists, negation, and the `{{skills_dir}}`-style path placeholders.
+
 ## Private Skillsets for Teams
 
 Teams can set up private registries to share custom Skillsets across the organization. With private registries:

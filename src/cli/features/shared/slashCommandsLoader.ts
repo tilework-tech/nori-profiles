@@ -9,6 +9,7 @@ import * as path from "path";
 import { log, note } from "@clack/prompts";
 
 import { resetManagedDir } from "@/cli/features/shared/managedDirOps.js";
+import { createTemplateWarningCollector } from "@/cli/features/shared/templateWarnings.js";
 import { substituteTemplatePaths } from "@/cli/features/template.js";
 import { bold } from "@/cli/logger.js";
 
@@ -57,6 +58,7 @@ export const createSlashCommandsLoader = (args: {
       const mdFiles = files.filter(
         (file) => file.endsWith(".md") && file !== "docs.md",
       );
+      const warnings = createTemplateWarningCollector();
 
       for (const file of mdFiles) {
         const commandSrc = path.join(configDir, file);
@@ -67,9 +69,11 @@ export const createSlashCommandsLoader = (args: {
           await fs.access(commandSrc);
           const content = await fs.readFile(commandSrc, "utf-8");
           const substituted = substituteTemplatePaths({
+            agentName: agent.name,
             content,
             commandsDir: destCommandsDir,
             installDir: agentDir,
+            onWarning: warnings.for({ relativePath: file }),
             skillsDir,
           });
           await fs.writeFile(commandDest, substituted);
@@ -78,6 +82,8 @@ export const createSlashCommandsLoader = (args: {
           skipped.push(commandName);
         }
       }
+
+      warnings.report();
 
       if (registered.length > 0) {
         const lines = registered.map((name) => `✓ /${name}`);

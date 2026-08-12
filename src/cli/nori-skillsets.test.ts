@@ -17,6 +17,8 @@ import * as path from "path";
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
+import { AGENT_NAMES } from "@/cli/features/agentNames.js";
+
 describe("nori-skillsets CLI", () => {
   let tempDir: string;
 
@@ -404,5 +406,59 @@ describe("nori-skillsets CLI", () => {
     });
     expect(hasListCommand).toBe(true);
     expect(output).toContain("List locally available skillsets");
+  });
+
+  it("should advertise the template syntax reference in top-level help", () => {
+    let output = "";
+
+    try {
+      output = execSync("node build/src/cli/nori-skillsets.js --help", {
+        encoding: "utf-8",
+        stdio: "pipe",
+        env: { ...process.env, FORCE_COLOR: "0", HOME: tempDir },
+      });
+    } catch (error: unknown) {
+      if (error && typeof error === "object") {
+        const execError = error as { stdout?: string; stderr?: string };
+        output = execError.stdout || execError.stderr || "";
+      }
+    }
+
+    const lines = output.split("\n");
+    const hasSyntaxCommand = lines.some((line) => {
+      const trimmed = line.trim();
+      return trimmed.startsWith("syntax ") || trimmed.startsWith("syntax\t");
+    });
+    expect(hasSyntaxCommand).toBe(true);
+    expect(output).toContain("{{#claude-code}}");
+    expect(output).toContain("nori-skillsets syntax");
+  });
+
+  it("should print the full template reference from the syntax command", () => {
+    let output = "";
+
+    try {
+      output = execSync("node build/src/cli/nori-skillsets.js syntax", {
+        encoding: "utf-8",
+        stdio: "pipe",
+        env: { ...process.env, FORCE_COLOR: "0", HOME: tempDir },
+      });
+    } catch (error: unknown) {
+      if (error && typeof error === "object") {
+        const execError = error as { stdout?: string; stderr?: string };
+        output = execError.stdout || execError.stderr || "";
+      }
+    }
+
+    expect(output).toContain("{{claude-code TaskCreate}}");
+    expect(output).toContain("{{#claude-code}}");
+    expect(output).toContain("{{else}}");
+    expect(output).toContain("{{skills_dir}}");
+
+    for (const name of AGENT_NAMES) {
+      expect(output).toMatch(
+        new RegExp(String.raw`(^|[^\w-])${name}([^\w-]|$)`),
+      );
+    }
   });
 });

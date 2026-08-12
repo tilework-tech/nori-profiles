@@ -333,6 +333,7 @@ export const switchSkillsetAction = async (args: {
             // Apply template substitution to .md files (matches install behavior)
             const original = relativePath.endsWith(".md")
               ? substituteTemplatePaths({
+                  agentName: diffAgent.name,
                   content: sourceContent,
                   installDir: agentDir,
                 })

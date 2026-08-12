@@ -259,6 +259,53 @@ describe("skill-download", () => {
       expect(versionInfo.registryUrl).toBe(REGISTRAR_URL);
     });
 
+    it("should install a per-agent variant of the skill for every broadcast agent", async () => {
+      // Each agent must resolve conditionals from the pristine source. Copying
+      // an already-substituted directory would give them the first agent's
+      // variant.
+      vi.mocked(loadConfig).mockResolvedValue({
+        installDir: testDir,
+        defaultAgents: ["claude-code", "codex"],
+      });
+      vi.mocked(registrarApi.getSkillPackument).mockResolvedValue({
+        name: "test-skill",
+        "dist-tags": { latest: "1.0.0" },
+        versions: { "1.0.0": { name: "test-skill", version: "1.0.0" } },
+      });
+      vi.mocked(registrarApi.downloadSkillTarball).mockResolvedValue(
+        await createMockSkillTarball({
+          skillContent: [
+            "---",
+            "name: test-skill",
+            "description: A test skill",
+            "---",
+            "Track work with {{claude-code TaskCreate}}{{codex update_plan}} first.",
+            "{{#codex}}",
+            "Codex only.",
+            "{{/}}",
+          ].join("\n"),
+        }),
+      );
+
+      await skillDownloadMain({ skillSpec: "test-skill", cwd: testDir });
+
+      const installed = async (agentDir: string) =>
+        fs.readFile(
+          path.join(testDir, agentDir, "skills", "test-skill", "SKILL.md"),
+          "utf-8",
+        );
+
+      const claude = await installed(".claude");
+      expect(claude).toContain("Track work with TaskCreate first.");
+      expect(claude).not.toContain("update_plan");
+      expect(claude).not.toContain("Codex only.");
+
+      const codex = await installed(".codex");
+      expect(codex).toContain("Track work with update_plan first.");
+      expect(codex).not.toContain("TaskCreate");
+      expect(codex).toContain("Codex only.");
+    });
+
     it("should route a bare skill name to the configured defaultOrg registry", async () => {
       vi.mocked(loadConfig).mockResolvedValue({
         installDir: testDir,

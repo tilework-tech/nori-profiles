@@ -14,6 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createSubagentsLoader } from "@/cli/features/shared/subagentsLoader.js";
 
 import type { Config } from "@/cli/config.js";
+import type { AgentName } from "@/cli/features/agentNames.js";
 import type { AgentConfig } from "@/cli/features/agentRegistry.js";
 import type { Skillset } from "@/norijson/skillset.js";
 
@@ -38,11 +39,14 @@ let mockNoriDir: string;
 
 // ---- helpers ----------------------------------------------------------------
 
-const createTestAgent = (args: { agentDir: string }): AgentConfig => {
-  const { agentDir } = args;
+const createTestAgent = (args: {
+  agentDir: string;
+  name?: AgentName | null;
+}): AgentConfig => {
+  const { agentDir, name } = args;
   const dirName = path.basename(agentDir);
   return {
-    name: "claude-code",
+    name: name ?? "claude-code",
     displayName: "Test Agent",
     supportTier: "experimental",
     capabilities: {
@@ -386,6 +390,49 @@ describe("createSubagentsLoader", () => {
   });
 
   describe("target-specific emission", () => {
+    it("should resolve agent conditionals before escaping the Codex TOML body", async () => {
+      const loader = createSubagentsLoader({
+        managedDirs: ["agents"],
+        targetFormat: "codex-toml",
+      });
+      const config = createTestConfig({
+        installDir: tempDir,
+        activeSkillset: "codex-conditional-test",
+      });
+      const skillset = await createTestSkillset({
+        skillsetsDir: noriProfilesDir,
+        skillsetName: "codex-conditional-test",
+        subagents: {
+          "planner.md": [
+            "---",
+            "name: planner",
+            "description: Plans work",
+            "---",
+            "Plan with {{claude-code TaskCreate}}{{codex update_plan}} first.",
+            "",
+            "{{#codex}}",
+            "Prefer apply_patch for edits.",
+            "{{/}}",
+          ].join("\n"),
+        },
+      });
+
+      await loader.run({
+        agent: createTestAgent({ agentDir, name: "codex" }),
+        config,
+        skillset,
+      });
+
+      const emitted = await fs.readFile(
+        path.join(agentsDir, "planner.toml"),
+        "utf-8",
+      );
+      expect(emitted).toContain("Plan with update_plan first.");
+      expect(emitted).toContain("Prefer apply_patch for edits.");
+      expect(emitted).not.toContain("TaskCreate");
+      expect(emitted).not.toContain("{{");
+    });
+
     it("should emit markdown-only subagents as Codex TOML", async () => {
       const loader = createSubagentsLoader({
         managedDirs: ["agents"],

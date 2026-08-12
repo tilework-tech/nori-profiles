@@ -13,14 +13,14 @@ Path: @/src/cli/features/bundled-skillsets
 - The shared skill loader (@/src/cli/features/shared/skillsLoader.ts) calls `copyBundledSkills()` after copying skillset-provided skills, so all agents receive bundled skills
 - The instructions loader (@/src/cli/features/shared/instructionsLoader.ts) calls `getBundledSkillsDir()` to scan bundled skills and include them in the skills list written to CLAUDE.md
 - Bundled skill files are stored as static assets at `@/src/cli/features/bundled-skillsets/skills/` alongside the installer module
-- Template substitution from @/src/cli/features/template.ts is applied to markdown files during copy, so bundled skills can use `{{skills_dir}}` and other placeholders
+- Template substitution from @/src/cli/features/template.ts is applied to markdown files during copy, so bundled skills can use `{{skills_dir}}` and other placeholders, plus per-agent conditionals such as `{{claude-code ...}}` / `{{#codex}}...{{/}}`
 
 ### Core Implementation
 
 - `installer.ts` exports two functions:
-  - `copyBundledSkills({ destSkillsDir, installDir })` -- copies each skill subdirectory from the bundled skills directory to the destination. Skips any skill whose name already exists at the destination (skillset-provided skills take precedence). Uses `fs.access()` to check existence before copying.
-  - `getBundledSkillsDir()` -- returns the absolute path to the bundled skills directory, used by the CLAUDE.md generator to discover bundled skills for the skills list
-- `copyDirWithTemplateSubstitution()` is a private helper that recursively copies a directory, applying `substituteTemplatePaths()` to `.md` files and doing a plain `fs.copyFile()` for everything else
+  - `copyBundledSkills({ agentName, commandsDir, destSkillsDir, installDir })` -- copies each skill subdirectory from the bundled skills directory to the destination. Skips any skill whose name already exists at the destination (skillset-provided skills take precedence). Uses `fs.access()` to check existence before copying. `agentName` is optional/nullable; when omitted, agent conditionals are left untouched rather than resolved.
+  - `getBundledSkillsDir()` -- returns the absolute path to the bundled skills directory, used by the instructions loader (@/src/cli/features/shared/instructionsLoader.ts) to discover bundled skills for the skills list
+- `copyDirWithTemplateSubstitution()` is a private helper that recursively copies a directory, applying `substituteTemplatePaths()` to `.md` files and doing a plain `fs.copyFile()` for everything else. It passes no `onWarning` sink, so authoring mistakes in bundled skills are silent — they are first-party content, validated in review rather than at install time.
 
 ### Things to Know
 

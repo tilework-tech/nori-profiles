@@ -1069,6 +1069,27 @@ export const registerNoriSkillsetsDirCommand = (args: {
 };
 
 /**
+ * Register the 'syntax' command for nori-skillsets CLI
+ * @param args - Configuration arguments
+ * @param args.program - Commander program instance
+ */
+export const registerNoriSkillsetsSyntaxCommand = (args: {
+  program: Command;
+}): void => {
+  const { program } = args;
+
+  program
+    .command("syntax")
+    .description(
+      "Show the skillset template syntax (agent conditionals and path placeholders)",
+    )
+    .action(async () => {
+      const { syntaxMain } = await import("@/cli/commands/syntax/syntax.js");
+      await syntaxMain();
+    });
+};
+
+/**
  * Register the 'install-location' command for nori-skillsets CLI
  * @param args - Configuration arguments
  * @param args.program - Commander program instance

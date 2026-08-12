@@ -10,6 +10,7 @@ import { log } from "@clack/prompts";
 import { glob } from "glob";
 
 import { getBundledSkillsDir } from "@/cli/features/bundled-skillsets/installer.js";
+import { createTemplateWarningCollector } from "@/cli/features/shared/templateWarnings.js";
 import { substituteTemplatePaths } from "@/cli/features/template.js";
 
 import type { AgentLoader } from "@/cli/features/agentRegistry.js";
@@ -304,12 +305,18 @@ export const createInstructionsLoader = (args: {
       }
 
       // Apply template substitution to replace placeholders with actual paths
+      const warnings = createTemplateWarningCollector();
       instructions = substituteTemplatePaths({
+        agentName: agent.name,
         content: instructions,
         commandsDir: installedCommandsDir,
         installDir: agentDir,
+        onWarning: warnings.for({
+          relativePath: path.basename(instructionsFilePath),
+        }),
         skillsDir: installedSkillsDir,
       });
+      warnings.report();
 
       // Generate and append skills list
       const skillsList = await generateSkillsList({
