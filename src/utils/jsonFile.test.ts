@@ -167,9 +167,17 @@ describe("writeJsonFileAtomic", () => {
         const entries = await fs.readdir(tempDir);
         for (const entry of entries) {
           if (entry.startsWith("secret.json.tmp-")) {
-            const mode =
-              (await fs.stat(path.join(tempDir, entry))).mode & 0o777;
-            observedModes.add(mode);
+            try {
+              const mode =
+                (await fs.stat(path.join(tempDir, entry))).mode & 0o777;
+              observedModes.add(mode);
+            } catch (err) {
+              // The temp file is renamed into place as soon as the write
+              // completes, so it can vanish between readdir and stat.
+              if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+                throw err;
+              }
+            }
           }
         }
         await new Promise((resolve) => setImmediate(resolve));
