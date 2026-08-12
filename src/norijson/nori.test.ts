@@ -14,6 +14,7 @@ import {
   addSkillToNoriJson,
   addSubagentToNoriJson,
   ensureNoriJson,
+  unpinDependencyVersions,
 } from "@/norijson/nori.js";
 
 describe("writeSkillsetMetadata", () => {
@@ -586,5 +587,78 @@ describe("ensureNoriJson", () => {
 
     const noriJsonPath = path.join(skillsetDir, "nori.json");
     await expect(fs.access(noriJsonPath)).rejects.toThrow();
+  });
+});
+
+describe("unpinDependencyVersions", () => {
+  let skillsetDir: string;
+
+  beforeEach(async () => {
+    skillsetDir = await fs.mkdtemp(path.join(tmpdir(), "nori-unpin-test-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(skillsetDir, { recursive: true, force: true });
+  });
+
+  it("should replace pinned skill and subagent versions with the unpinned range", async () => {
+    const metadata = {
+      name: "my-skillset",
+      version: "1.0.0",
+      dependencies: {
+        skills: { alpha: "1.2.3", beta: "^2.0.0" },
+        subagents: { gamma: "3.0.1" },
+      },
+    };
+    await writeSkillsetMetadata({ skillsetDir, metadata });
+
+    await unpinDependencyVersions({ skillsetDir, metadata });
+
+    const written = await readSkillsetMetadata({ skillsetDir });
+    expect(written.dependencies?.skills).toEqual({ alpha: "*", beta: "*" });
+    expect(written.dependencies?.subagents).toEqual({ gamma: "*" });
+  });
+
+  it("should preserve unrelated manifest fields and other dependency kinds", async () => {
+    const metadata = {
+      name: "my-skillset",
+      version: "1.0.0",
+      description: "A skillset",
+      keywords: ["testing"],
+      dependencies: {
+        skills: { alpha: "1.2.3" },
+        slashCommands: { "my-command": "1.0.0" },
+      },
+    };
+    await writeSkillsetMetadata({ skillsetDir, metadata });
+
+    await unpinDependencyVersions({ skillsetDir, metadata });
+
+    const written = await readSkillsetMetadata({ skillsetDir });
+    expect(written.name).toBe("my-skillset");
+    expect(written.version).toBe("1.0.0");
+    expect(written.description).toBe("A skillset");
+    expect(written.keywords).toEqual(["testing"]);
+    expect(written.dependencies?.skills).toEqual({ alpha: "*" });
+    expect(written.dependencies?.slashCommands).toEqual({
+      "my-command": "1.0.0",
+    });
+  });
+
+  it("should leave a manifest without dependencies untouched", async () => {
+    const metadata = { name: "my-skillset", version: "1.0.0" };
+    await writeSkillsetMetadata({ skillsetDir, metadata });
+    const before = await fs.readFile(
+      path.join(skillsetDir, "nori.json"),
+      "utf-8",
+    );
+
+    await unpinDependencyVersions({ skillsetDir, metadata });
+
+    const after = await fs.readFile(
+      path.join(skillsetDir, "nori.json"),
+      "utf-8",
+    );
+    expect(after).toBe(before);
   });
 });

@@ -32,7 +32,11 @@ import { substituteTemplatePaths } from "@/cli/features/template.js";
 import { subagentDownloadFlow } from "@/cli/prompts/flows/subagentDownload.js";
 import { recordFlowFailure } from "@/cli/prompts/flows/utils.js";
 import { resolveOrgRegistryAuth } from "@/core/registryAuthResolution.js";
-import { addSubagentToNoriJson, ensureNoriJson } from "@/norijson/nori.js";
+import {
+  addSubagentToNoriJson,
+  ensureNoriJson,
+  UNPINNED_VERSION,
+} from "@/norijson/nori.js";
 import { resolveUserSkillsetRef } from "@/norijson/skillset.js";
 import { verifyArchiveChecksum } from "@/packaging/archive.js";
 import {
@@ -558,7 +562,7 @@ export const subagentDownloadMain = async (args: {
                 await addSubagentToNoriJson({
                   skillsetDir: targetSkillsetDir,
                   subagentName,
-                  version: resolvedTargetVersion,
+                  version: UNPINNED_VERSION,
                 });
                 profileUpdateMessage = `Added "${subagentDisplayName}" to ${targetSkillset} skillset nori.json`;
               } catch (noriJsonErr) {

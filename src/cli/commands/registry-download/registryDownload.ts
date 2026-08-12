@@ -22,6 +22,7 @@ import { AgentRegistry } from "@/cli/features/agentRegistry.js";
 import { registryDownloadFlow } from "@/cli/prompts/flows/index.js";
 import { recordFlowFailure } from "@/cli/prompts/flows/utils.js";
 import { resolveOrgRegistryAuth } from "@/core/registryAuthResolution.js";
+import { unpinDependencyVersions } from "@/norijson/nori.js";
 import { getNoriSkillsetsDir } from "@/norijson/skillset.js";
 import { verifyArchiveChecksum } from "@/packaging/archive.js";
 import {
@@ -370,6 +371,63 @@ const downloadSubagentDependencies = async (args: {
 };
 
 /**
+ * Install a skillset's declared skill and subagent dependencies and record them
+ * in its nori.json.
+ *
+ * Dependencies always resolve to the registry's latest version, so the manifest
+ * records that they are unpinned; the version each one resolved to is recorded
+ * in its own .nori-version file.
+ *
+ * @param args - The sync parameters
+ * @param args.skillsetDir - The installed skillset directory
+ * @param args.registryUrl - The registry URL to download dependencies from
+ * @param args.authToken - Optional authentication token for private registries
+ *
+ * @returns Array of warning messages from failed dependency downloads
+ */
+const syncDependencies = async (args: {
+  skillsetDir: string;
+  registryUrl: string;
+  authToken?: string | null;
+}): Promise<Array<string>> => {
+  const { skillsetDir, registryUrl, authToken } = args;
+
+  const noriJson = await readNoriJson({ skillsetDir });
+  if (noriJson == null) {
+    return [];
+  }
+
+  const skillWarnings = await downloadSkillDependencies({
+    noriJson,
+    skillsDir: path.join(skillsetDir, "skills"),
+    registryUrl,
+    authToken,
+    silent: true,
+  });
+  const subagentWarnings = await downloadSubagentDependencies({
+    noriJson,
+    subagentsDir: path.join(skillsetDir, "subagents"),
+    registryUrl,
+    authToken,
+    silent: true,
+  });
+
+  const warnings = [...skillWarnings, ...subagentWarnings];
+
+  // The manifest is bookkeeping: a skillset whose files installed correctly
+  // must not report as a failed download because its manifest could not be
+  // rewritten.
+  try {
+    await unpinDependencyVersions({ skillsetDir, metadata: noriJson });
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    warnings.push(`Warning: Could not update nori.json: ${errorMessage}`);
+  }
+
+  return warnings;
+};
+
+/**
  * Download and install a skillset from the registrar
  * @param args - The download parameters
  * @param args.packageSpec - Package name with optional version (e.g., "my-profile" or "my-profile@1.0.0")
@@ -699,31 +757,14 @@ export const registryDownloadMain = async (args: {
 
             if (installedValid && targetValid) {
               if (semver.gte(installedVersion, resolvedTargetVersion)) {
-                let depWarnings: Array<string> = [];
-                const noriJson = await readNoriJson({ skillsetDir: targetDir });
-                if (noriJson != null) {
-                  const profileSkillsDir = path.join(targetDir, "skills");
-                  depWarnings = await downloadSkillDependencies({
-                    noriJson,
-                    skillsDir: profileSkillsDir,
-                    registryUrl: foundRegistry.registryUrl,
-                    authToken: foundRegistry.authToken,
-                    silent: true,
-                  });
-                  const profileSubagentsDir = path.join(targetDir, "subagents");
-                  const subagentWarnings = await downloadSubagentDependencies({
-                    noriJson,
-                    subagentsDir: profileSubagentsDir,
-                    registryUrl: foundRegistry.registryUrl,
-                    authToken: foundRegistry.authToken,
-                    silent: true,
-                  });
-                  depWarnings = [...depWarnings, ...subagentWarnings];
-                }
                 return {
                   status: "already-current",
                   version: installedVersion,
-                  warnings: depWarnings,
+                  warnings: await syncDependencies({
+                    skillsetDir: targetDir,
+                    registryUrl: foundRegistry.registryUrl,
+                    authToken: foundRegistry.authToken,
+                  }),
                 };
               }
               return {
@@ -733,31 +774,14 @@ export const registryDownloadMain = async (args: {
                 currentVersion: installedVersion,
               };
             } else if (installedVersion === resolvedTargetVersion) {
-              let depWarnings: Array<string> = [];
-              const noriJson = await readNoriJson({ skillsetDir: targetDir });
-              if (noriJson != null) {
-                const profileSkillsDir = path.join(targetDir, "skills");
-                depWarnings = await downloadSkillDependencies({
-                  noriJson,
-                  skillsDir: profileSkillsDir,
-                  registryUrl: foundRegistry.registryUrl,
-                  authToken: foundRegistry.authToken,
-                  silent: true,
-                });
-                const profileSubagentsDir = path.join(targetDir, "subagents");
-                const subagentWarnings = await downloadSubagentDependencies({
-                  noriJson,
-                  subagentsDir: profileSubagentsDir,
-                  registryUrl: foundRegistry.registryUrl,
-                  authToken: foundRegistry.authToken,
-                  silent: true,
-                });
-                depWarnings = [...depWarnings, ...subagentWarnings];
-              }
               return {
                 status: "already-current",
                 version: installedVersion,
-                warnings: depWarnings,
+                warnings: await syncDependencies({
+                  skillsetDir: targetDir,
+                  registryUrl: foundRegistry.registryUrl,
+                  authToken: foundRegistry.authToken,
+                }),
               };
             }
           }
@@ -817,28 +841,11 @@ export const registryDownloadMain = async (args: {
             });
 
             // Download skill and subagent dependencies and collect warnings
-            let warnings: Array<string> = [];
-            const noriJson = await readNoriJson({ skillsetDir: targetDir });
-            if (noriJson != null) {
-              const profileSkillsDir = path.join(targetDir, "skills");
-              warnings = await downloadSkillDependencies({
-                noriJson,
-                skillsDir: profileSkillsDir,
-                registryUrl: selectedRegistry.registryUrl,
-                authToken: selectedRegistry.authToken,
-                silent: true,
-              });
-
-              const profileSubagentsDir = path.join(targetDir, "subagents");
-              const subagentWarnings = await downloadSubagentDependencies({
-                noriJson,
-                subagentsDir: profileSubagentsDir,
-                registryUrl: selectedRegistry.registryUrl,
-                authToken: selectedRegistry.authToken,
-                silent: true,
-              });
-              warnings = [...warnings, ...subagentWarnings];
-            }
+            const warnings = await syncDependencies({
+              skillsetDir: targetDir,
+              registryUrl: selectedRegistry.registryUrl,
+              authToken: selectedRegistry.authToken,
+            });
 
             return {
               success: true,

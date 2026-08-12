@@ -7,20 +7,26 @@ Path: @/src/norijson
 - Type definitions and runtime operations for the `nori.json` manifest format -- the package descriptor used by both skillsets and individual skills in the Nori ecosystem.
 - The `Skillset` type, parser, and discovery logic for resolving skillset directories from `~/.nori/profiles/`.
 - The on-disk **storage-bucket model** and its single read-resolution seam (`resolveSkillsetDir`), which lets bare skillset names keep resolving after they are relocated into `personal/` / `public/` buckets.
+- The **manifest/receipt split**: `nori.json` declares *which* dependencies a skillset has; each dependency's own `.nori-version` sidecar (see @/src/packaging/provenance.ts) records *which version actually landed on disk*.
 
 ### How it fits into the larger codebase
 
 - `NoriJson` is consumed by CLI commands for skillset packaging (@/src/cli/commands/registry-upload/), downloading, and installation.
-- The metadata CRUD functions (`readSkillsetMetadata`, `writeSkillsetMetadata`, `addSkillToNoriJson`, `addSubagentToNoriJson`, `ensureNoriJson`) in `nori.ts` are called by CLI commands (fork, new, register, external, skill-download) and by `parseSkillset()` in `skillset.ts`.
+- The metadata CRUD functions (`readSkillsetMetadata`, `writeSkillsetMetadata`, `addSkillToNoriJson`, `addSubagentToNoriJson`, `unpinDependencyVersions`, `ensureNoriJson`) in `nori.ts` are called by CLI commands (fork, new, register, external, skill-download) and by `parseSkillset()` in `skillset.ts`.
+- **Dependency-map writers only.** No production code reads a *version value* out of `dependencies.skills` / `dependencies.subagents` -- the download paths in @/src/cli/commands/registry-download/ iterate `Object.keys()` and always fetch `dist-tags.latest`. Every other reference is a write. `unpinDependencyVersions` and `UNPINNED_VERSION` exist to make that fact explicit in the on-disk data rather than leaving stale exact versions behind.
 - `parseSkillset()` in `skillset.ts` is called by `agentOperations.installSkillset()` in @/src/cli/features/agentOperations.ts to resolve the active skillset before running loaders.
 - `listSkillsets()` and `listSkillsetsWithMetadata()` in `skillset.ts` are called by CLI commands (switch-skillset, list-skillsets, link-skillset, import-mcp) to discover installed skillsets. `listSkillsetsWithMetadata()` returns richer `SkillsetEntry` objects that include `isLinked` status, while `listSkillsets()` delegates to it and returns just names.
 - `resolveSkillsetDir()` and `skillsetCreateDir()` in `skillset.ts` are the shared read/create seams for the storage buckets. Read-path commands (switch, upload, install, skill/subagent download, skill-upload, import-mcp, unlink) and `agentOperations` (`switchSkillset`, `captureExistingConfig`) resolve a bare name across buckets via `resolveSkillsetDir`/`resolveUserSkillsetRef`; create-path commands (`new`, `fork`, `external --new`, `link`) namespace a bare create name under `defaultOrg` via `namespaceCreateSkillsetName`, then place it via `skillsetCreateDir`. The write/download layout is chosen upstream in `@/src/utils/url.ts` (`namespacedOnDiskName`).
 - `getNoriDir()` and `getNoriSkillsetsDir()` in `skillset.ts` provide the canonical paths (`~/.nori/` and `~/.nori/profiles/`) used throughout the CLI for skillset directory resolution.
 
 ```
-CLI Commands (fork, new, register, switch, list, external, skill-download)
+CLI Commands (fork, new, register, switch, list, external, skill/subagent-download)
     |
-    +-- nori.ts: readSkillsetMetadata / writeSkillsetMetadata / addSkillToNoriJson / addSubagentToNoriJson / ensureNoriJson
+    +-- nori.ts: readSkillsetMetadata / addSkillToNoriJson / addSubagentToNoriJson
+    |            unpinDependencyVersions / ensureNoriJson
+    |                    |
+    |                    +-- all funnel into writeSkillsetMetadata
+    |                            +-- normalizeMetadataForWrite (sole sort/normalize point)
     |
     +-- skillset.ts: parseSkillset / listSkillsets / resolveSkillsetDir / skillsetCreateDir / getNoriDir / getNoriSkillsetsDir
             |
@@ -28,19 +34,35 @@ CLI Commands (fork, new, register, switch, list, external, skill-download)
             +-- calls ensureNoriJson / readSkillsetMetadata from nori.ts
 ```
 
+```
+Who records what version, and where:
+
+  publisher                              consumer
+  ---------                              --------
+  upload -> uploadSync.ts                download -> registryDownload.syncDependencies
+    writes EXACT versions into             writes "*" into nori.json deps
+    nori.json deps                         writes RESOLVED version into <dep>/.nori-version
+
+           nori.json  = "which dependencies exist"   (declaration)
+        .nori-version = "which version is on disk"   (receipt)
+```
+
 ### Core Implementation
 
-**`nori.ts`** defines `NoriJson`, the unified manifest type. Key fields: `name`, `version` (required), `type` (one of `"skillset"`, `"skill"`, `"inlined-skill"`, `"subagent"`, `"inlined-subagent"`), and optional content arrays (`skills`, `subagents`, `slashcommands` for skillsets; `scripts` for skills). The `dependencies` field maps skill names and subagent names to version ranges. The type allows arbitrary additional fields via an index signature.
+**`nori.ts`** defines `NoriJson`, the unified manifest type. Key fields: `name`, `version` (required), `type` (one of `"skillset"`, `"skill"`, `"inlined-skill"`, `"subagent"`, `"inlined-subagent"`), the `dependencies` map, and optional top-level content arrays. Of the content arrays, only `subagents` is live: it is written by the upload pipeline (@/src/core/uploadPipeline.ts) and read back by `registry-upload` to distinguish already-declared inline subagents from newly discovered flat `.md` candidates. The top-level `skills` and `slashcommands` arrays are **vestigial** -- nothing in the repo populates or reads them; they survive only as type declarations and as sort targets in `normalizeMetadataForWrite`. The type allows arbitrary additional fields via an index signature.
 
-`nori.ts` also defines the skillset content types (`SkillsetSkill`, `SkillsetSubagent`, `SkillsetSlashCommand`) that describe discovered skillset components. `SkillsetSubagent` includes an optional `scripts` field for directory-based subagents that bundle scripts alongside their `SUBAGENT.md`. Runtime functions for `nori.json` file I/O:
+`nori.ts` also declares the skillset content types (`SkillsetSkill`, `SkillsetSubagent`, `SkillsetSlashCommand`). Only `SkillsetSubagent` is actually constructed anywhere (by the upload pipeline); `SkillsetSkill` and `SkillsetSlashCommand` are vestigial alongside their arrays. `SkillsetSubagent` includes an optional `scripts` field for directory-based subagents that bundle scripts alongside their `SUBAGENT.md`. Runtime functions for `nori.json` file I/O:
 
 | Function | Purpose |
 |----------|---------|
 | `readSkillsetMetadata` | Reads and parses `nori.json` from a skillset directory |
-| `writeSkillsetMetadata` | Normalizes and writes `NoriJson` to `nori.json` in a skillset directory |
+| `writeSkillsetMetadata` | Normalizes and writes `NoriJson` to `nori.json` in a skillset directory. Single write seam -- everything below routes through it |
 | `addSkillToNoriJson` | Adds/updates a skill dependency in `nori.json`, creating the file if missing |
 | `addSubagentToNoriJson` | Adds/updates a subagent dependency in `nori.json`, creating the file if missing (mirrors `addSkillToNoriJson`) |
+| `unpinDependencyVersions` | Rewrites every skill and subagent dependency value to `UNPINNED_VERSION`. No-ops when the manifest declares neither map |
 | `ensureNoriJson` | Backwards-compat shim: creates `nori.json` for legacy skillset dirs that have a config file or both `skills/` and `subagents/` subdirectories but no manifest |
+
+**`UNPINNED_VERSION`** (`"*"`) is the exported constant every consumer-side install writes into `dependencies.skills` / `dependencies.subagents`. Dependency installs unconditionally resolve `dist-tags.latest` and ignore any declared range, so a recorded exact version was decorative and could only drift: re-downloading an already-installed skillset upgraded the skills on disk while the versions listed in `nori.json` stayed frozen at whatever the first install saw. Rather than syncing a resolved version back into the manifest after every install, the manifest was demoted to a pure *declaration* of dependency names.
 
 **`skillset.ts`** provides path utilities, the `Skillset` type, the storage-bucket resolution seam, and discovery:
 
@@ -72,8 +94,10 @@ CLI Commands (fork, new, register, switch, list, external, skill-download)
 
 - **Bucket invariant**: Every non-legacy skillset lives in a bucket (`personal/`, `public/`, or an org `<orgId>/`), and the bucket is part of the **user-facing namespaced identity**: `sks list`/`sks current` render `personal/foo`, `public/foo`, `<org>/foo`, and `activeSkillset` is persisted as that identity (via `canonicalSkillsetName`, see @/src/cli/config.ts). A **bare** `foo` remains a resolvable shorthand for back-compat but is deprecated. Because `resolveSkillsetDir` re-resolves bare names across buckets (and the legacy flat location), older `activeSkillset` values and references never break when a profile is relocated. A one-time on-disk migration performs the relocation and rewrites a stored bare `activeSkillset` to its identity -- see @/src/cli/profilesMigration.ts.
 - **System invariant**: `writeSkillsetMetadata` calls `normalizeMetadataForWrite` before serialization, which sorts list fields alphabetically (`skills` by name, `subagents` by name, `slashcommands` by command, `keywords` alphabetically, and `dependencies` object keys alphabetically). The `scripts` array is intentionally NOT sorted since script execution order may be meaningful. This is the single normalization point for all nori.json output — any future sortable fields should be added here.
+- **Manifest vs. receipt invariant**: `nori.json` states *which* skills and subagents a skillset depends on; each dependency's `.nori-version` sidecar states *which version is on disk*. Consumer-side installs therefore record `UNPINNED_VERSION` for every entry. There is no version-range resolution in production: `resolveSkillVersion` in @/src/cli/features/skillResolver.ts is the only caller of `semver.satisfies` in the repo and has no production callers, and there is a standing test asserting that a download takes the latest version regardless of any range declared in `nori.json`.
+- **Asymmetry worth knowing**: the *publisher* side does not follow this rule. After a successful upload, `syncLocalStateAfterUpload` in @/src/core/uploadSync.ts writes registrar-assigned exact versions into `dependencies.skills` / `dependencies.subagents` of the publisher's local manifest. Any *consumer* who then installs that skillset normalizes those values back to `"*"`. This is deliberate for now, so a manifest freshly published and a manifest freshly installed legitimately differ in their dependency values.
 - The `type` field distinguishes between full skillsets, standalone skills/subagents, and skills/subagents that were inlined from a skillset upload. `"inlined-skill"` and `"inlined-subagent"` types are set during the upload flow when the user chooses to keep a skill or subagent bundled in the skillset tarball rather than extracting it as an independent package. The `"subagent"` and `"inlined-subagent"` types mirror the skill types, giving subagents the same lifecycle as skills for upload, versioning, and registry distribution.
-- `NoriJsonDependencies.subagents` maps subagent names to version ranges, mirroring the `skills` dependency map.
+- `NoriJsonDependencies.subagents` mirrors the `skills` dependency map, and `slashCommands` is declared for future use with no writer today. `unpinDependencyVersions` touches only the `skills` and `subagents` maps and leaves any other `dependencies` keys intact; it also returns early when neither map is present, so a manifest that never declared a `dependencies` section never gains an empty one.
 - `ensureNoriJson` uses the exported `looksLikeSkillset` heuristic: it checks for the presence of a known config file name (defaults to `["AGENTS.md", "CLAUDE.md"]`) or both `skills/` and `subagents/` subdirectories. This allows it to auto-generate manifests for user-created skillsets that predate the `nori.json` convention. Only mutation paths (`parseSkillset`, downloads, capture) call `ensureNoriJson`; read-only listing uses `looksLikeSkillset` directly so legacy skillsets are still discovered without gaining a `nori.json` as a side effect.
 - `parseSkillset` checks for config files in priority order: `AGENTS.md` first, then `CLAUDE.md`. When both exist, `AGENTS.md` wins. New skillsets are created with `AGENTS.md`; `CLAUDE.md` is supported for backward compatibility with existing skillsets.
 - Skillsets that bundle MCP servers (or any other env-dependent feature) may declare a `requiredEnv` array in `nori.json`. Entries are either plain strings or objects with `name`/`description`/`url`. The field is read by `checkRequiredEnv` at install time (see @/src/cli/features/envCheck.ts) and is auto-populated when running the `import-mcp` command (see @/src/cli/commands/import-mcp/docs.md).

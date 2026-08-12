@@ -105,6 +105,8 @@ import { initMain } from "@/cli/commands/init/init.js";
 import { loadConfig, getRegistryAuth } from "@/cli/config.js";
 import { computeArchiveShasum } from "@/packaging/archive.js";
 
+import type { NoriJson } from "@/norijson/nori.js";
+
 import { registryDownloadMain } from "./registryDownload.js";
 
 /**
@@ -2226,6 +2228,431 @@ describe("registry-download", () => {
     });
   });
 
+  describe("dependency versions recorded in nori.json", () => {
+    /**
+     * Install a profile on disk at a given version so that downloading it again
+     * takes the "already at this version" path and offers to re-download.
+     *
+     * @param args - Seed options
+     * @param args.dependencies - Dependency map to write into the installed nori.json
+     * @param args.dependencies.skills - Skill dependencies to declare
+     * @param args.dependencies.subagents - Subagent dependencies to declare
+     * @param args.installedSkillVersions - Version to record for each already-present skill
+     * @param args.installedSubagentVersions - Version to record for each already-present subagent
+     *
+     * @returns The installed profile directory
+     */
+    const seedInstalledProfile = async (args: {
+      dependencies: {
+        skills?: Record<string, string> | null;
+        subagents?: Record<string, string> | null;
+      };
+      installedSkillVersions?: Record<string, string> | null;
+      installedSubagentVersions?: Record<string, string> | null;
+    }): Promise<string> => {
+      const {
+        dependencies,
+        installedSkillVersions,
+        installedSubagentVersions,
+      } = args;
+
+      const profileDir = path.join(skillsetsDir, "public", "test-profile");
+      await fs.mkdir(profileDir, { recursive: true });
+      await fs.writeFile(
+        path.join(profileDir, ".nori-version"),
+        JSON.stringify({ version: "1.0.0", registryUrl: REGISTRAR_URL }),
+      );
+      await fs.writeFile(
+        path.join(profileDir, "nori.json"),
+        JSON.stringify({
+          name: "test-profile",
+          version: "1.0.0",
+          dependencies,
+        }),
+      );
+
+      for (const [skillName, version] of Object.entries(
+        installedSkillVersions ?? {},
+      )) {
+        const skillDir = path.join(profileDir, "skills", skillName);
+        await fs.mkdir(skillDir, { recursive: true });
+        await fs.writeFile(
+          path.join(skillDir, ".nori-version"),
+          JSON.stringify({ version, registryUrl: REGISTRAR_URL }),
+        );
+      }
+
+      for (const [subagentName, version] of Object.entries(
+        installedSubagentVersions ?? {},
+      )) {
+        const subagentDir = path.join(profileDir, "subagents", subagentName);
+        await fs.mkdir(subagentDir, { recursive: true });
+        await fs.writeFile(
+          path.join(subagentDir, ".nori-version"),
+          JSON.stringify({ version, registryUrl: REGISTRAR_URL }),
+        );
+      }
+
+      return profileDir;
+    };
+
+    /**
+     * Read the dependency maps back out of an installed profile's nori.json.
+     *
+     * @param args - Read options
+     * @param args.profileDir - The installed profile directory
+     *
+     * @returns The parsed nori.json
+     */
+    const readInstalledNoriJson = async (args: {
+      profileDir: string;
+    }): Promise<NoriJson> => {
+      const { profileDir } = args;
+      return JSON.parse(
+        await fs.readFile(path.join(profileDir, "nori.json"), "utf-8"),
+      );
+    };
+
+    it("records a skill dependency as * after re-downloading an already-installed skillset", async () => {
+      vi.mocked(loadConfig).mockResolvedValue({ installDir: testDir });
+
+      const profileDir = await seedInstalledProfile({
+        dependencies: { skills: { "test-skill": "1.0.0" } },
+        installedSkillVersions: { "test-skill": "1.0.0" },
+      });
+
+      vi.mocked(registrarApi.getPackument).mockResolvedValue({
+        name: "test-profile",
+        "dist-tags": { latest: "1.0.0" },
+        versions: { "1.0.0": { name: "test-profile", version: "1.0.0" } },
+      });
+      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(
+        await createMockTarballWithNoriJson({
+          noriJson: {
+            name: "test-profile",
+            version: "1.0.0",
+            dependencies: { skills: { "test-skill": "1.0.0" } },
+          },
+        }),
+      );
+
+      // A newer skill is available than the one currently installed.
+      vi.mocked(registrarApi.getSkillPackument).mockResolvedValue({
+        name: "test-skill",
+        "dist-tags": { latest: "1.2.0" },
+        versions: {
+          "1.0.0": { name: "test-skill", version: "1.0.0" },
+          "1.2.0": { name: "test-skill", version: "1.2.0" },
+        },
+      });
+      vi.mocked(registrarApi.downloadSkillTarball).mockResolvedValue(
+        await createMockSkillTarball({ skillName: "test-skill" }),
+      );
+
+      vi.mocked(clack.confirm).mockResolvedValue(true);
+
+      await registryDownloadMain({
+        packageSpec: "test-profile",
+        cwd: testDir,
+      });
+
+      const noriJson = await readInstalledNoriJson({ profileDir });
+      expect(noriJson.dependencies?.skills?.["test-skill"]).toBe("*");
+
+      // The newer skill really was installed; the manifest simply does not pin it.
+      const installedSkillVersion = JSON.parse(
+        await fs.readFile(
+          path.join(profileDir, "skills", "test-skill", ".nori-version"),
+          "utf-8",
+        ),
+      );
+      expect(installedSkillVersion.version).toBe("1.2.0");
+    });
+
+    it("records a skill dependency as * even when the re-download is declined", async () => {
+      vi.mocked(loadConfig).mockResolvedValue({ installDir: testDir });
+
+      const profileDir = await seedInstalledProfile({
+        dependencies: { skills: { "test-skill": "1.0.0" } },
+        installedSkillVersions: { "test-skill": "1.0.0" },
+      });
+
+      vi.mocked(registrarApi.getPackument).mockResolvedValue({
+        name: "test-profile",
+        "dist-tags": { latest: "1.0.0" },
+        versions: { "1.0.0": { name: "test-profile", version: "1.0.0" } },
+      });
+      vi.mocked(registrarApi.getSkillPackument).mockResolvedValue({
+        name: "test-skill",
+        "dist-tags": { latest: "1.2.0" },
+        versions: {
+          "1.0.0": { name: "test-skill", version: "1.0.0" },
+          "1.2.0": { name: "test-skill", version: "1.2.0" },
+        },
+      });
+      vi.mocked(registrarApi.downloadSkillTarball).mockResolvedValue(
+        await createMockSkillTarball({ skillName: "test-skill" }),
+      );
+
+      // Declining leaves the skillset itself alone, but its skills are still
+      // upgraded, so the manifest must not keep claiming the old version.
+      vi.mocked(clack.confirm).mockResolvedValue(false);
+
+      await registryDownloadMain({ packageSpec: "test-profile", cwd: testDir });
+
+      expect(registrarApi.downloadTarball).not.toHaveBeenCalled();
+
+      const noriJson = await readInstalledNoriJson({ profileDir });
+      expect(noriJson.dependencies?.skills?.["test-skill"]).toBe("*");
+
+      const installedSkillVersion = JSON.parse(
+        await fs.readFile(
+          path.join(profileDir, "skills", "test-skill", ".nori-version"),
+          "utf-8",
+        ),
+      );
+      expect(installedSkillVersion.version).toBe("1.2.0");
+    });
+
+    it("records * for a dependency even when that skill fails to download", async () => {
+      vi.mocked(loadConfig).mockResolvedValue({ installDir: testDir });
+
+      const profileDir = await seedInstalledProfile({
+        dependencies: {
+          skills: { "good-skill": "1.0.0", "bad-skill": "1.0.0" },
+        },
+      });
+
+      vi.mocked(registrarApi.getPackument).mockResolvedValue({
+        name: "test-profile",
+        "dist-tags": { latest: "1.0.0" },
+        versions: { "1.0.0": { name: "test-profile", version: "1.0.0" } },
+      });
+      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(
+        await createMockTarballWithNoriJson({
+          noriJson: {
+            name: "test-profile",
+            version: "1.0.0",
+            dependencies: {
+              skills: { "good-skill": "1.0.0", "bad-skill": "1.0.0" },
+            },
+          },
+        }),
+      );
+
+      vi.mocked(registrarApi.getSkillPackument).mockImplementation(
+        async (callArgs: { skillName: string }) => {
+          if (callArgs.skillName === "bad-skill") {
+            throw new Error("skill not found in registry");
+          }
+          return {
+            name: callArgs.skillName,
+            "dist-tags": { latest: "1.2.0" },
+            versions: {
+              "1.2.0": { name: callArgs.skillName, version: "1.2.0" },
+            },
+          };
+        },
+      );
+      vi.mocked(registrarApi.downloadSkillTarball).mockResolvedValue(
+        await createMockSkillTarball({ skillName: "good-skill" }),
+      );
+      vi.mocked(clack.confirm).mockResolvedValue(true);
+
+      await registryDownloadMain({ packageSpec: "test-profile", cwd: testDir });
+
+      const noriJson = await readInstalledNoriJson({ profileDir });
+      expect(noriJson.dependencies?.skills?.["good-skill"]).toBe("*");
+      expect(noriJson.dependencies?.skills?.["bad-skill"]).toBe("*");
+      expect(getAllClackOutput()).toContain(
+        'Failed to download skill "bad-skill"',
+      );
+    });
+
+    it("records a subagent dependency as * after re-downloading an already-installed skillset", async () => {
+      vi.mocked(loadConfig).mockResolvedValue({ installDir: testDir });
+
+      const profileDir = await seedInstalledProfile({
+        dependencies: { subagents: { "my-subagent": "1.0.0" } },
+        installedSubagentVersions: { "my-subagent": "1.0.0" },
+      });
+
+      vi.mocked(registrarApi.getPackument).mockResolvedValue({
+        name: "test-profile",
+        "dist-tags": { latest: "1.0.0" },
+        versions: { "1.0.0": { name: "test-profile", version: "1.0.0" } },
+      });
+      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(
+        await createMockTarballWithNoriJson({
+          noriJson: {
+            name: "test-profile",
+            version: "1.0.0",
+            dependencies: { subagents: { "my-subagent": "1.0.0" } },
+          },
+        }),
+      );
+
+      vi.mocked(registrarApi.getSubagentPackument).mockResolvedValue({
+        name: "my-subagent",
+        "dist-tags": { latest: "1.2.0" },
+        versions: {
+          "1.0.0": { name: "my-subagent", version: "1.0.0" },
+          "1.2.0": { name: "my-subagent", version: "1.2.0" },
+        },
+      });
+      vi.mocked(registrarApi.downloadSubagentTarball).mockResolvedValue(
+        await createMockSubagentTarball({ subagentName: "my-subagent" }),
+      );
+      vi.mocked(clack.confirm).mockResolvedValue(true);
+
+      await registryDownloadMain({ packageSpec: "test-profile", cwd: testDir });
+
+      const noriJson = await readInstalledNoriJson({ profileDir });
+      expect(noriJson.dependencies?.subagents?.["my-subagent"]).toBe("*");
+
+      const installedSubagentVersion = JSON.parse(
+        await fs.readFile(
+          path.join(profileDir, "subagents", "my-subagent", ".nori-version"),
+          "utf-8",
+        ),
+      );
+      expect(installedSubagentVersion.version).toBe("1.2.0");
+    });
+
+    it("records a skill dependency as * on a first-time download", async () => {
+      vi.mocked(loadConfig).mockResolvedValue({ installDir: testDir });
+
+      vi.mocked(registrarApi.getPackument).mockResolvedValue({
+        name: "test-profile",
+        "dist-tags": { latest: "1.0.0" },
+        versions: { "1.0.0": { name: "test-profile", version: "1.0.0" } },
+      });
+      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(
+        await createMockTarballWithNoriJson({
+          noriJson: {
+            name: "test-profile",
+            version: "1.0.0",
+            dependencies: { skills: { "test-skill": "1.0.0" } },
+          },
+        }),
+      );
+      vi.mocked(registrarApi.getSkillPackument).mockResolvedValue({
+        name: "test-skill",
+        "dist-tags": { latest: "1.2.0" },
+        versions: {
+          "1.0.0": { name: "test-skill", version: "1.0.0" },
+          "1.2.0": { name: "test-skill", version: "1.2.0" },
+        },
+      });
+      vi.mocked(registrarApi.downloadSkillTarball).mockResolvedValue(
+        await createMockSkillTarball({ skillName: "test-skill" }),
+      );
+
+      await registryDownloadMain({ packageSpec: "test-profile", cwd: testDir });
+
+      const noriJson = await readInstalledNoriJson({
+        profileDir: path.join(skillsetsDir, "public", "test-profile"),
+      });
+      expect(noriJson.dependencies?.skills?.["test-skill"]).toBe("*");
+    });
+
+    it("records a skill dependency as * when the installed version is not semver", async () => {
+      vi.mocked(loadConfig).mockResolvedValue({ installDir: testDir });
+
+      const profileDir = path.join(skillsetsDir, "public", "test-profile");
+      await fs.mkdir(path.join(profileDir, "skills", "test-skill"), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(profileDir, ".nori-version"),
+        JSON.stringify({ version: "nightly", registryUrl: REGISTRAR_URL }),
+      );
+      await fs.writeFile(
+        path.join(profileDir, "nori.json"),
+        JSON.stringify({
+          name: "test-profile",
+          version: "nightly",
+          dependencies: { skills: { "test-skill": "1.0.0" } },
+        }),
+      );
+      await fs.writeFile(
+        path.join(profileDir, "skills", "test-skill", ".nori-version"),
+        JSON.stringify({ version: "1.0.0", registryUrl: REGISTRAR_URL }),
+      );
+
+      vi.mocked(registrarApi.getPackument).mockResolvedValue({
+        name: "test-profile",
+        "dist-tags": { latest: "nightly" },
+        versions: { nightly: { name: "test-profile", version: "nightly" } },
+      });
+      vi.mocked(registrarApi.getSkillPackument).mockResolvedValue({
+        name: "test-skill",
+        "dist-tags": { latest: "1.2.0" },
+        versions: { "1.2.0": { name: "test-skill", version: "1.2.0" } },
+      });
+      vi.mocked(registrarApi.downloadSkillTarball).mockResolvedValue(
+        await createMockSkillTarball({ skillName: "test-skill" }),
+      );
+      // Decline, so only the non-semver already-current branch runs.
+      vi.mocked(clack.confirm).mockResolvedValue(false);
+
+      await registryDownloadMain({ packageSpec: "test-profile", cwd: testDir });
+
+      const noriJson = await readInstalledNoriJson({ profileDir });
+      expect(noriJson.dependencies?.skills?.["test-skill"]).toBe("*");
+    });
+
+    it("reports a warning instead of failing when the manifest cannot be rewritten", async () => {
+      vi.mocked(loadConfig).mockResolvedValue({ installDir: testDir });
+
+      vi.mocked(registrarApi.getPackument).mockResolvedValue({
+        name: "test-profile",
+        "dist-tags": { latest: "1.0.0" },
+        versions: { "1.0.0": { name: "test-profile", version: "1.0.0" } },
+      });
+      // A published manifest whose subagent entries have no name cannot be
+      // normalized for writing.
+      vi.mocked(registrarApi.downloadTarball).mockResolvedValue(
+        await createMockTarballWithNoriJson({
+          noriJson: {
+            name: "test-profile",
+            version: "1.0.0",
+            subagents: [{ id: "b-agent" }, { id: "a-agent" }],
+            dependencies: { skills: { "test-skill": "1.0.0" } },
+          },
+        }),
+      );
+      vi.mocked(registrarApi.getSkillPackument).mockResolvedValue({
+        name: "test-skill",
+        "dist-tags": { latest: "1.2.0" },
+        versions: { "1.2.0": { name: "test-skill", version: "1.2.0" } },
+      });
+      vi.mocked(registrarApi.downloadSkillTarball).mockResolvedValue(
+        await createMockSkillTarball({ skillName: "test-skill" }),
+      );
+
+      await registryDownloadMain({ packageSpec: "test-profile", cwd: testDir });
+
+      const output = getAllClackOutput();
+      expect(output).toContain("Could not update nori.json");
+      expect(output).not.toContain("Failed to download skillset");
+
+      // The skillset and its skill still installed.
+      await expect(
+        fs.access(
+          path.join(
+            skillsetsDir,
+            "public",
+            "test-profile",
+            "skills",
+            "test-skill",
+            "SKILL.md",
+          ),
+        ),
+      ).resolves.toBeUndefined();
+    });
+  });
+
   describe("namespaced package download", () => {
     it("should download namespaced package to nested directory", async () => {
       vi.mocked(loadConfig).mockResolvedValue({
@@ -2884,6 +3311,9 @@ const createMockTarball = async (args?: {
  * @param args.noriJson - The nori.json content to include
  * @param args.noriJson.name - The profile name
  * @param args.noriJson.version - The profile version
+ * @param args.noriJson.description - Optional profile description
+ * @param args.noriJson.keywords - Optional profile keywords
+ * @param args.noriJson.subagents - Optional inlined subagent entries
  * @param args.noriJson.dependencies - Optional skill dependencies
  * @param args.gzip - Whether to gzip the tarball (default: true)
  *
@@ -2893,6 +3323,9 @@ const createMockTarballWithNoriJson = async (args: {
   noriJson: {
     name: string;
     version: string;
+    description?: string | null;
+    keywords?: Array<string> | null;
+    subagents?: Array<{ id: string; name?: string | null }> | null;
     dependencies?: {
       skills?: Record<string, string>;
       subagents?: Record<string, string>;

@@ -26,7 +26,7 @@ import {
   restoreSettingsFile,
 } from "@/cli/features/settingsBackup.js";
 import { bold } from "@/cli/logger.js";
-import { ensureNoriJson } from "@/norijson/nori.js";
+import { ensureNoriJson, UNPINNED_VERSION } from "@/norijson/nori.js";
 import {
   MANIFEST_FILE,
   getNoriSkillsetsDir,
@@ -35,7 +35,6 @@ import {
   resolveUserSkillsetRef,
   skillsetCreateDir,
 } from "@/norijson/skillset.js";
-import { readVersionInfo } from "@/packaging/provenance.js";
 
 import type {
   AgentConfig,
@@ -555,14 +554,11 @@ export const captureExistingConfig = async (args: {
     // Skills dir doesn't exist
   }
 
-  // Create nori.json with skills map. Registry-installed skills carry their
-  // version in .nori-version; "*" remains only for local-only skills.
+  // Create nori.json with skills map. The version each skill resolved to is
+  // recorded in its own .nori-version file, not here.
   const skillsMap: Record<string, string> = {};
   for (const skillName of skillNames) {
-    const versionInfo = await readVersionInfo({
-      dir: path.join(skillsDir, skillName),
-    });
-    skillsMap[skillName] = versionInfo?.version ?? "*";
+    skillsMap[skillName] = UNPINNED_VERSION;
   }
 
   const noriJson = {

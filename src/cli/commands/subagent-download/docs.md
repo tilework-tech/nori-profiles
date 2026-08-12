@@ -10,7 +10,8 @@ The subagent-download command downloads and installs individual subagent package
 
 - Registered as `download-subagent` via `@/src/cli/commands/noriSkillsetsCommands.ts` with `wrapWithFraming` for intro/outro framing.
 - Uses `registrarApi.getSubagentPackument()` and `registrarApi.downloadSubagentTarball()` from `@/api/registrar.js` for registry interactions.
-- Subagent dependencies are tracked in `nori.json` via `addSubagentToNoriJson()` from `@/norijson/nori.js`. There is no `skills.json` equivalent for subagents.
+- Subagent dependencies are tracked in `nori.json` via `addSubagentToNoriJson()` from `@/norijson/nori.js`. There is no `skills.json` equivalent for subagents, so `nori.json` is the only manifest this command writes.
+- The recorded value is always `UNPINNED_VERSION` (`"*"`), not the resolved target version: `nori.json` declares *which* subagents the skillset depends on, and the subagent's own `.nori-version` records *which version* landed on disk. See the manifest/receipt split in @/src/norijson/docs.md.
 - Full subagent directory structures are persisted under the skillset profile at `~/.nori/profiles/<skillset>/subagents/<name>/`.
 - The UX flow is delegated to `subagentDownloadFlow` from `@/cli/prompts/flows/subagentDownload.js`, following the same callback-injection pattern as all other flows.
 - Package mechanics come from the shared primitives in @/src/packaging/: per-registry search and message formatting from `registryLookup.ts`, atomic install/update from `atomicReplace.ts`, and `.nori-version` provenance from `provenance.ts`. Search errors from `searchSpecificRegistry` are swallowed at the call site, preserving pre-refactor behavior.

@@ -28,7 +28,11 @@ import { substituteTemplatePaths } from "@/cli/features/template.js";
 import { skillDownloadFlow } from "@/cli/prompts/flows/index.js";
 import { recordFlowFailure } from "@/cli/prompts/flows/utils.js";
 import { resolveOrgRegistryAuth } from "@/core/registryAuthResolution.js";
-import { addSkillToNoriJson, ensureNoriJson } from "@/norijson/nori.js";
+import {
+  addSkillToNoriJson,
+  ensureNoriJson,
+  UNPINNED_VERSION,
+} from "@/norijson/nori.js";
 import { resolveUserSkillsetRef } from "@/norijson/skillset.js";
 import { verifyArchiveChecksum } from "@/packaging/archive.js";
 import {
@@ -571,7 +575,7 @@ export const skillDownloadMain = async (args: {
                 await addSkillToNoriJson({
                   skillsetDir: targetSkillsetDir,
                   skillName,
-                  version: resolvedTargetVersion,
+                  version: UNPINNED_VERSION,
                 });
               } catch (noriJsonErr) {
                 const msg =

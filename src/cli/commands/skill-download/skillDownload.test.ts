@@ -1945,7 +1945,7 @@ describe("nori.json updates on skill download", () => {
     expect(noriJson.name).toBe("my-profile");
     expect(noriJson.version).toBe("1.0.0");
     expect(noriJson.description).toBe("Test profile");
-    expect(noriJson.dependencies?.skills?.["downloaded-skill"]).toBe("1.0.0");
+    expect(noriJson.dependencies?.skills?.["downloaded-skill"]).toBe("*");
   });
 
   it("should auto-create nori.json when it does not exist", async () => {
@@ -1983,7 +1983,7 @@ describe("nori.json updates on skill download", () => {
     const noriJson = JSON.parse(noriJsonContent);
     expect(noriJson.name).toBe("no-nori-json-profile");
     expect(noriJson.version).toBe("1.0.0");
-    expect(noriJson.dependencies?.skills?.["new-skill"]).toBe("1.0.0");
+    expect(noriJson.dependencies?.skills?.["new-skill"]).toBe("*");
   });
 
   it("should preserve existing nori.json dependencies when adding new skill", async () => {
@@ -2031,7 +2031,7 @@ describe("nori.json updates on skill download", () => {
     expect(noriJson.dependencies.skills).toEqual({
       "existing-skill": "^1.0.0",
       "another-skill": "*",
-      "third-skill": "1.0.0",
+      "third-skill": "*",
     });
   });
 

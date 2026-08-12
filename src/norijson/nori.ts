@@ -52,6 +52,15 @@ export type NoriJsonDependencies = {
 };
 
 /**
+ * The version range recorded for every skill and subagent dependency.
+ *
+ * Dependencies always resolve to the registry's latest version at install time.
+ * The version that actually landed on disk is recorded in each dependency's
+ * .nori-version file, so recording a resolved version here would only go stale.
+ */
+export const UNPINNED_VERSION = "*";
+
+/**
  * The unified nori.json manifest format
  *
  * This type serves as the single manifest type for both skillsets and skills.
@@ -218,6 +227,65 @@ export const addSkillToNoriJson = async (args: {
   metadata.dependencies.skills[skillName] = version;
 
   await writeSkillsetMetadata({ skillsetDir, metadata });
+};
+
+/**
+ * Rewrite every dependency entry in a set of dependencies to the unpinned range.
+ *
+ * @param args - Function arguments
+ * @param args.dependencies - Map of dependency name to version range
+ *
+ * @returns The same dependency names, all mapped to the unpinned range
+ */
+const unpinVersions = (args: {
+  dependencies: Record<string, string>;
+}): Record<string, string> => {
+  const { dependencies } = args;
+  return Object.fromEntries(
+    Object.keys(dependencies).map((name) => [name, UNPINNED_VERSION]),
+  );
+};
+
+/**
+ * Record every skill and subagent dependency in a skillset's nori.json as
+ * unpinned.
+ *
+ * Called after installing a skillset so the manifest states which dependencies
+ * the skillset has, rather than a snapshot of the versions that happened to be
+ * resolved on some earlier run. Skillsets with no dependencies are left alone so
+ * that an empty dependencies section is never introduced.
+ *
+ * @param args - Function arguments
+ * @param args.skillsetDir - Path to skillset directory
+ * @param args.metadata - The skillset's current manifest
+ */
+export const unpinDependencyVersions = async (args: {
+  skillsetDir: string;
+  metadata: NoriJson;
+}): Promise<void> => {
+  const { skillsetDir, metadata } = args;
+
+  const skills = metadata.dependencies?.skills;
+  const subagents = metadata.dependencies?.subagents;
+  if (skills == null && subagents == null) {
+    return;
+  }
+
+  await writeSkillsetMetadata({
+    skillsetDir,
+    metadata: {
+      ...metadata,
+      dependencies: {
+        ...metadata.dependencies,
+        ...(skills == null
+          ? {}
+          : { skills: unpinVersions({ dependencies: skills }) }),
+        ...(subagents == null
+          ? {}
+          : { subagents: unpinVersions({ dependencies: subagents }) }),
+      },
+    },
+  });
 };
 
 /**

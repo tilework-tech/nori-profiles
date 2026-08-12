@@ -694,9 +694,7 @@ describe("subagent-download", () => {
       const noriJsonPath = path.join(skillsetDir, "nori.json");
       const noriJsonContent = await fs.readFile(noriJsonPath, "utf-8");
       const noriJson = JSON.parse(noriJsonContent);
-      expect(noriJson.dependencies?.subagents?.["downloaded-sub"]).toBe(
-        "1.0.0",
-      );
+      expect(noriJson.dependencies?.subagents?.["downloaded-sub"]).toBe("*");
     });
 
     it("should preserve existing dependencies when adding new subagent", async () => {
@@ -743,7 +741,7 @@ describe("subagent-download", () => {
       });
       expect(noriJson.dependencies.subagents).toEqual({
         "existing-sub": "*",
-        "new-sub": "1.0.0",
+        "new-sub": "*",
       });
     });
 
@@ -783,9 +781,7 @@ describe("subagent-download", () => {
       const noriJson = JSON.parse(
         await fs.readFile(path.join(skillsetDir, "nori.json"), "utf-8"),
       );
-      expect(noriJson.dependencies?.subagents?.["downloaded-sub"]).toBe(
-        "1.0.0",
-      );
+      expect(noriJson.dependencies?.subagents?.["downloaded-sub"]).toBe("*");
 
       // The subagent extracted into the public-bucket profile at
       // profiles/public/flat-profile, proving public/flat-profile resolved there.

@@ -29,6 +29,7 @@ import { isReservedSkillsetName } from "@/cli/prompts/validators.js";
 import {
   addSkillToNoriJson,
   ensureNoriJson,
+  UNPINNED_VERSION,
   type NoriJsonType,
 } from "@/norijson/nori.js";
 import {
@@ -251,7 +252,7 @@ const installSkill = async (args: {
       await addSkillToNoriJson({
         skillsetDir: skillsetDir,
         skillName: skillDirName,
-        version: "*",
+        version: UNPINNED_VERSION,
       });
     } catch (noriJsonErr) {
       const msg =

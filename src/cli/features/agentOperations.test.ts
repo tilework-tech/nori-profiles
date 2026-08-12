@@ -1436,7 +1436,7 @@ describe("captureExistingConfig", () => {
     expect(noriJson.dependencies.skills["skill-beta"]).toBe("*");
   });
 
-  it("should record the .nori-version version for registry-installed skills", async () => {
+  it("should record * for a skill even when .nori-version pins an exact version", async () => {
     const agent = createTestAgent();
     const agentDir = agent.getAgentDir({ installDir: tempDir });
     fs.mkdirSync(agentDir, { recursive: true });
@@ -1485,7 +1485,7 @@ describe("captureExistingConfig", () => {
         "utf-8",
       ),
     );
-    expect(noriJson.dependencies.skills["registry-skill"]).toBe("1.2.3");
+    expect(noriJson.dependencies.skills["registry-skill"]).toBe("*");
     expect(noriJson.dependencies.skills["local-skill"]).toBe("*");
   });
 
