@@ -1,80 +1,84 @@
-import { promises as fs } from "fs";
-import { createHash } from "node:crypto";
-import * as os from "os";
-import * as path from "path";
+import { randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
+import * as path from "node:path";
 
 import semver from "semver";
 
-import { type CliName } from "@/cli/commands/cliCommandNames.js";
+import { exchangeRefreshToken } from "@/api/refreshToken.js";
 import { loadConfig, type Config } from "@/cli/config.js";
-import { getCurrentPackageVersion } from "@/cli/version.js";
 import { getHomeDir } from "@/utils/home.js";
 
-const DEFAULT_ANALYTICS_URL = "https://noriskillsets.dev/api/analytics/track";
+const DEFAULT_ANALYTICS_URL =
+  "https://login.norisessions.com/api/analytics/v1/events";
 const INSTALL_STATE_SCHEMA_VERSION = 1;
 const INSTALL_STATE_FILE = ".nori-install.json";
-const RESURRECTION_THRESHOLD_DAYS = 30;
+const REQUEST_TIMEOUT_MS = 250;
 
-/**
- * Mutable tilework source identifier.
- * Default is "nori-skillsets".
- * Entry points should call setTileworkSource() to configure this.
- */
-let tileworkSource: CliName = "nori-skillsets";
+const COMMAND_ALLOWLIST = new Set([
+  "init",
+  "search",
+  "download",
+  "upload",
+  "install",
+  "switch",
+  "link",
+  "unlink",
+  "list",
+  "list-active",
+  "list-agents",
+  "current",
+  "download-skill",
+  "upload-skill",
+  "download-subagent",
+  "external",
+  "dir",
+  "install-location",
+  "fork",
+  "new",
+  "register",
+  "import-mcp",
+  "edit",
+  "clear",
+  "clear-current",
+  "factory-reset",
+  "config",
+]);
 
-/**
- * Set the tilework source identifier for analytics events.
- * Call this early in your entry point before any analytics calls.
- * @param args - Arguments
- * @param args.source - The source identifier ("nori-skillsets")
- */
-export const setTileworkSource = (args: { source: CliName }): void => {
-  tileworkSource = args.source;
+const COMMAND_ALIASES: Readonly<Record<string, string>> = {
+  "fork-skillset": "fork",
+  "fork-skillsets": "fork",
+  "new-skillset": "new",
+  "register-skillset": "register",
+  "edit-skillset": "edit",
+  "edit-skillsets": "edit",
+  "switch-skillset": "switch",
+  "switch-skillsets": "switch",
+  use: "switch",
+  "list-skillsets": "list",
+  "list-skillset": "list",
+  ls: "list",
+  la: "list-active",
+  "current-skillset": "current",
+  location: "install-location",
+  cc: "clear-current",
 };
 
-/**
- * Get the current tilework source identifier.
- * @returns The current source identifier
- */
-export const getTileworkSource = (): CliName => {
-  return tileworkSource;
-};
+type AnalyticsResult = "success" | "failure";
+type InstallKind = "first_install" | "update" | "reinstall";
 
-/**
- * Session ID generated once per process lifetime.
- * Per GA4 spec, all events in the same session should share this ID.
- * Using Unix timestamp in seconds as recommended.
- */
-const SESSION_ID = Math.floor(Date.now() / 1000).toString();
-
-/**
- * Type definitions matching the PLAN_ANALYTICS_PROXY.md API spec
- */
-export type EventParams = {
-  tilework_source: string;
-  tilework_session_id: string;
-  tilework_timestamp: string;
-  [key: string]: unknown;
-};
-
-/**
- * CLI-specific event params extending base EventParams
- */
-export type CLIEventParams = EventParams & {
-  tilework_cli_executable_name: string;
-  tilework_cli_installed_version: string;
-  tilework_cli_install_source: string;
-  tilework_cli_days_since_install: number;
-  tilework_cli_node_version: string;
-  tilework_cli_profile: string | null;
-  tilework_cli_install_type: "authenticated" | "unauthenticated";
-};
-
-type AnalyticsEventRequest = {
-  client_id: string;
-  user_id?: string | null;
-  event_name: string;
-  event_params: EventParams;
+type AnalyticsEnvelope = {
+  schema_version: 1;
+  event:
+    | "skillsets_command_completed"
+    | "skillsets_install_started"
+    | "skillsets_install_completed"
+    | "skillsets_watch_started";
+  activity_id: string;
+  occurred_at: string;
+  product: "skillsets";
+  surface: "cli";
+  app_version: string;
+  properties?: Record<string, string>;
 };
 
 type InstallState = {
@@ -88,129 +92,35 @@ type InstallState = {
   install_source: string;
 };
 
-const getInstallStatePath = (): string => {
-  return path.join(getHomeDir(), ".nori", "profiles", INSTALL_STATE_FILE);
+export type InstallAnalyticsContext = {
+  activityId: string;
+  installKind: InstallKind;
+  currentVersion: string;
 };
 
-const isOptedOut = (state: InstallState | null): boolean => {
-  if (process.env.NORI_NO_ANALYTICS === "1") {
-    return true;
-  }
-
-  return state?.opt_out === true;
+type ActiveCommand = {
+  command: string;
+  currentVersion: string;
 };
+
+const pendingCaptures = new Set<Promise<void>>();
+const installStartedCaptures = new Map<string, Promise<void>>();
+let activeCommand: ActiveCommand | null = null;
+let pendingLaunchInstallContext: InstallAnalyticsContext | null = null;
+let explicitInstallLifecycleClaimed = false;
+
+const getInstallStatePath = (): string =>
+  path.join(getHomeDir(), ".nori", "profiles", INSTALL_STATE_FILE);
 
 const getInstallSource = (): string => {
   const userAgent = process.env.npm_config_user_agent ?? "";
-
-  if (userAgent.includes("bun")) {
-    return "bun";
-  }
-
-  if (userAgent.includes("pnpm")) {
-    return "pnpm";
-  }
-
-  if (userAgent.includes("yarn")) {
-    return "yarn";
-  }
-
-  if (userAgent.includes("npm")) {
-    return "npm";
-  }
-
+  if (userAgent.includes("bun")) return "bun";
+  if (userAgent.includes("pnpm")) return "pnpm";
+  if (userAgent.includes("yarn")) return "yarn";
+  if (userAgent.includes("npm")) return "npm";
   return "unknown";
 };
 
-const formatHashAsUuid = (hash: string): string => {
-  return [
-    hash.slice(0, 8),
-    hash.slice(8, 12),
-    hash.slice(12, 16),
-    hash.slice(16, 20),
-    hash.slice(20, 32),
-  ].join("-");
-};
-
-export const getDeterministicClientId = (): string => {
-  let username = "unknown";
-  try {
-    username = os.userInfo().username;
-  } catch {
-    username = process.env.USER ?? process.env.USERNAME ?? "unknown";
-  }
-
-  const hostname = os.hostname();
-  const hash = createHash("sha256")
-    .update(`nori_salt:${hostname}:${username}`)
-    .digest("hex");
-  return formatHashAsUuid(hash);
-};
-
-/**
- * Build the base event params required for ALL events.
- * Note: tilework_session_id is constant for the process lifetime,
- * while tilework_timestamp captures when each event is sent.
- * @returns Base event params with tilework_source, tilework_session_id, and tilework_timestamp
- */
-export const buildBaseEventParams = (): EventParams => {
-  return {
-    tilework_source: getTileworkSource(),
-    tilework_session_id: SESSION_ID,
-    tilework_timestamp: new Date().toISOString(),
-  };
-};
-
-/**
- * Send analytics event with proper structure matching PLAN_ANALYTICS_PROXY.md
- * @param args - Event arguments
- * @param args.eventName - Name of the event (e.g., "claude_session_started")
- * @param args.eventParams - Event parameters including tilework_* fields
- * @param args.clientId - Optional client ID (defaults to deterministic ID)
- * @param args.userId - Optional user ID for cross-device tracking
- */
-export const sendAnalyticsEvent = (args: {
-  eventName: string;
-  eventParams: EventParams;
-  clientId?: string | null;
-  userId?: string | null;
-}): void => {
-  const { eventName, eventParams, clientId, userId } = args;
-
-  const payload: AnalyticsEventRequest = {
-    client_id: clientId ?? getDeterministicClientId(),
-    event_name: eventName,
-    event_params: eventParams,
-  };
-
-  if (userId != null) {
-    payload.user_id = userId;
-  }
-
-  const analyticsUrl = process.env.NORI_ANALYTICS_URL ?? DEFAULT_ANALYTICS_URL;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  timeout.unref?.();
-
-  void fetch(analyticsUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal: controller.signal,
-  })
-    .catch(() => {
-      // Silent failure
-    })
-    .finally(() => {
-      clearTimeout(timeout);
-    });
-};
-
-/**
- * Load config for analytics without failing.
- * Config is at a fixed path (~/.nori-config.json), no need for CWD detection.
- * @returns Config or null if not found
- */
 const loadConfigForAnalytics = async (): Promise<Config | null> => {
   try {
     return await loadConfig();
@@ -219,227 +129,345 @@ const loadConfigForAnalytics = async (): Promise<Config | null> => {
   }
 };
 
-/**
- * Get user ID (email) from config for cross-device tracking.
- * @param args - Optional arguments
- * @param args.config - Pre-loaded config (optional, will load if not provided).
- *   Pass `null` explicitly to skip loading config and return null.
- *
- * @returns User email or null if not authenticated
- */
-export const getUserId = async (args?: {
-  config?: Config | null;
-}): Promise<string | null> => {
-  // If config is explicitly passed (even if null), use it. Only load from disk
-  // when config is not provided at all (args is undefined or config key is missing).
-  const hasExplicitConfig = args != null && "config" in args;
-  const config = hasExplicitConfig
-    ? args.config
-    : await loadConfigForAnalytics();
-  return config?.auth?.username ?? null;
+const isHumanIdentity = (username: string | null | undefined): boolean => {
+  if (username == null) return false;
+  const normalized = username.trim().toLowerCase();
+  return normalized.includes("@") && !normalized.startsWith("nori-service:");
 };
 
-/**
- * Build CLI-specific event params with all standard tilework_cli_* fields.
- * Loads config and install state to populate fields automatically.
- * @param args - Optional arguments
- * @param args.config - Pre-loaded config (optional, will load if not provided)
- * @param args.currentVersion - Current CLI version (optional, reads from package if not provided)
- *
- * @returns CLI event params including base params and all tilework_cli_* fields
- */
-export const buildCLIEventParams = async (args?: {
-  config?: Config | null;
-  currentVersion?: string | null;
-}): Promise<CLIEventParams> => {
-  const { config: providedConfig, currentVersion } = args ?? {};
+const getFirebaseIdToken = async (
+  config: Config | null,
+  signal: AbortSignal,
+): Promise<string | null> => {
+  const auth = config?.auth;
+  if (!isHumanIdentity(auth?.username)) return null;
 
-  // Load config if not provided
-  const config = providedConfig ?? (await loadConfigForAnalytics());
+  if (
+    auth?.idToken != null &&
+    auth.idToken !== "" &&
+    typeof auth.idTokenExpiresAt === "number" &&
+    Date.now() < auth.idTokenExpiresAt
+  ) {
+    return auth.idToken;
+  }
 
-  // Load install state for days_since_install and install_source
-  const state = await readInstallState();
+  if (auth?.refreshToken == null || auth.refreshToken === "") return null;
 
-  // Get version
-  const version = currentVersion ?? getCurrentPackageVersion() ?? "unknown";
+  try {
+    const refreshed = await exchangeRefreshToken({
+      refreshToken: auth.refreshToken,
+      signal,
+    });
+    return refreshed.idToken;
+  } catch {
+    return null;
+  }
+};
 
-  // Calculate days since install
-  const daysSinceInstall =
-    state?.first_installed_at != null
-      ? Math.floor(
-          (Date.now() - new Date(state.first_installed_at).getTime()) /
-            (1000 * 60 * 60 * 24),
-        )
-      : 0;
+const isOptedOut = (state: InstallState | null): boolean =>
+  process.env.NORI_NO_ANALYTICS === "1" || state?.opt_out === true;
 
-  // Get the active skillset from config (agent-agnostic)
-  const skillset = config?.activeSkillset ?? null;
+const capture = async (envelope: AnalyticsEnvelope): Promise<void> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  timeout.unref?.();
+  try {
+    const state = await readInstallState();
+    if (isOptedOut(state)) return;
 
-  // Determine install type
-  const installType: "authenticated" | "unauthenticated" =
-    config?.auth?.username != null ? "authenticated" : "unauthenticated";
+    const config = await loadConfigForAnalytics();
+    const idToken = await getFirebaseIdToken(config, controller.signal);
+    if (idToken == null) return;
 
+    await fetch(process.env.NORI_ANALYTICS_URL ?? DEFAULT_ANALYTICS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(envelope),
+      signal: controller.signal,
+    });
+  } catch {
+    // Analytics is best-effort and must never affect CLI behavior.
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const queueCapture = (
+  envelope: AnalyticsEnvelope,
+  after: Promise<void> = Promise.resolve(),
+): Promise<void> => {
+  const request = after
+    .then(() => capture(envelope))
+    .catch(() => undefined)
+    .finally(() => pendingCaptures.delete(request));
+  pendingCaptures.add(request);
+  return request;
+};
+
+const buildEnvelope = (args: {
+  event: AnalyticsEnvelope["event"];
+  currentVersion: string;
+  activityId?: string;
+  properties?: Record<string, string>;
+}): AnalyticsEnvelope => {
+  const { event, currentVersion, activityId, properties } = args;
   return {
-    ...buildBaseEventParams(),
-    tilework_cli_executable_name: getTileworkSource(),
-    tilework_cli_installed_version: version,
-    tilework_cli_install_source: state?.install_source ?? getInstallSource(),
-    tilework_cli_days_since_install: daysSinceInstall,
-    tilework_cli_node_version: process.versions.node,
-    tilework_cli_profile: skillset,
-    tilework_cli_install_type: installType,
+    schema_version: 1,
+    event,
+    activity_id: activityId ?? randomUUID(),
+    occurred_at: new Date().toISOString(),
+    product: "skillsets",
+    surface: "cli",
+    app_version: currentVersion,
+    ...(properties == null ? {} : { properties }),
   };
 };
 
-/**
- * Read install state from disk.
- * @returns Install state or null if not found
- */
-export const readInstallState = async (): Promise<InstallState | null> => {
-  const filePath = getInstallStatePath();
+export const flushProductAnalytics = async (args: {
+  timeoutMs: number;
+}): Promise<void> => {
+  const requests = [...pendingCaptures];
+  if (requests.length === 0) return;
 
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    const content = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(content) as InstallState;
+    await Promise.race([
+      Promise.allSettled(requests),
+      new Promise<void>((resolve) => {
+        timeout = setTimeout(resolve, Math.max(0, args.timeoutMs));
+        timeout.unref?.();
+      }),
+    ]);
+  } catch {
+    // Analytics is best-effort.
+  } finally {
+    if (timeout != null) clearTimeout(timeout);
+    for (const request of requests) pendingCaptures.delete(request);
+  }
+};
+
+export const readInstallState = async (): Promise<InstallState | null> => {
+  try {
+    return JSON.parse(
+      await fs.readFile(getInstallStatePath(), "utf8"),
+    ) as InstallState;
   } catch {
     return null;
   }
 };
 
 const writeInstallState = async (state: InstallState): Promise<void> => {
-  const filePath = getInstallStatePath();
-  const dirPath = path.dirname(filePath);
-
-  await fs.mkdir(dirPath, { recursive: true });
-  await fs.writeFile(filePath, `${JSON.stringify(state, null, 2)}\n`);
+  const statePath = getInstallStatePath();
+  await fs.mkdir(path.dirname(statePath), { recursive: true });
+  await fs.writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
 };
 
-const shouldTriggerResurrection = (state: InstallState): boolean => {
-  if (!state.last_launched_at) {
-    return false;
+const classifyInstall = (args: {
+  previousVersion: string | null;
+  currentVersion: string;
+  explicitInstall: boolean;
+}): InstallKind | null => {
+  const { previousVersion, currentVersion, explicitInstall } = args;
+  if (previousVersion == null) return "first_install";
+  if (
+    semver.valid(previousVersion) != null &&
+    semver.valid(currentVersion) != null &&
+    semver.gt(currentVersion, previousVersion)
+  ) {
+    return "update";
+  }
+  return explicitInstall ? "reinstall" : null;
+};
+
+export const trackInstallStarted = async (args: {
+  currentVersion: string;
+  explicitInstall?: boolean;
+}): Promise<InstallAnalyticsContext | null> => {
+  try {
+    const now = new Date().toISOString();
+    const previous = await readInstallState();
+    const installKind = classifyInstall({
+      previousVersion: previous?.installed_version ?? null,
+      currentVersion: args.currentVersion,
+      explicitInstall: args.explicitInstall === true,
+    });
+    const shouldAdvanceVersion =
+      previous == null ||
+      (semver.valid(args.currentVersion) != null &&
+        semver.valid(previous.installed_version) != null &&
+        semver.gt(args.currentVersion, previous.installed_version));
+
+    const state: InstallState = {
+      schema_version: INSTALL_STATE_SCHEMA_VERSION,
+      client_id: previous?.client_id || randomUUID(),
+      opt_out: previous?.opt_out === true,
+      first_installed_at: previous?.first_installed_at || now,
+      last_updated_at: shouldAdvanceVersion
+        ? now
+        : previous?.last_updated_at || now,
+      last_launched_at: now,
+      installed_version: shouldAdvanceVersion
+        ? args.currentVersion
+        : previous?.installed_version || args.currentVersion,
+      install_source: previous?.install_source || getInstallSource(),
+    };
+    await writeInstallState(state);
+
+    if (installKind == null || isOptedOut(state)) return null;
+
+    const context: InstallAnalyticsContext = {
+      activityId: randomUUID(),
+      installKind,
+      currentVersion: args.currentVersion,
+    };
+    const startedCapture = queueCapture(
+      buildEnvelope({
+        event: "skillsets_install_started",
+        activityId: context.activityId,
+        currentVersion: context.currentVersion,
+        properties: { install_kind: context.installKind },
+      }),
+    );
+    installStartedCaptures.set(context.activityId, startedCapture);
+    return context;
+  } catch {
+    return null;
+  }
+};
+
+export const trackInstallCompleted = async (args: {
+  context: InstallAnalyticsContext | null;
+  result: AnalyticsResult;
+}): Promise<void> => {
+  if (args.context == null) return;
+  const startedCapture =
+    installStartedCaptures.get(args.context.activityId) ?? Promise.resolve();
+  const completedCapture = queueCapture(
+    buildEnvelope({
+      event: "skillsets_install_completed",
+      activityId: args.context.activityId,
+      currentVersion: args.context.currentVersion,
+      properties: {
+        install_kind: args.context.installKind,
+        result: args.result,
+      },
+    }),
+    startedCapture,
+  );
+  void completedCapture.finally(() => {
+    installStartedCaptures.delete(args.context!.activityId);
+  });
+  if (pendingLaunchInstallContext?.activityId === args.context.activityId) {
+    pendingLaunchInstallContext = null;
+  }
+};
+
+export const beginLaunchInstallLifecycle = async (args: {
+  currentVersion: string;
+}): Promise<void> => {
+  explicitInstallLifecycleClaimed = false;
+  pendingLaunchInstallContext = await trackInstallStarted({
+    currentVersion: args.currentVersion,
+  });
+};
+
+export const claimInstallLifecycleForExplicitRun = async (args: {
+  currentVersion: string;
+}): Promise<InstallAnalyticsContext | null> => {
+  if (explicitInstallLifecycleClaimed) return null;
+  explicitInstallLifecycleClaimed = true;
+
+  if (pendingLaunchInstallContext != null) {
+    return pendingLaunchInstallContext;
   }
 
-  const lastLaunch = new Date(state.last_launched_at).getTime();
-  if (Number.isNaN(lastLaunch)) {
-    return false;
-  }
+  pendingLaunchInstallContext = await trackInstallStarted({
+    currentVersion: args.currentVersion,
+    explicitInstall: true,
+  });
+  return pendingLaunchInstallContext;
+};
 
-  const thresholdMs = RESURRECTION_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;
-  return Date.now() - lastLaunch > thresholdMs;
+export const completeUnclaimedInstallLifecycle = async (): Promise<void> => {
+  if (explicitInstallLifecycleClaimed) return;
+  const context = pendingLaunchInstallContext;
+  pendingLaunchInstallContext = null;
+  await trackInstallCompleted({ context, result: "success" });
 };
 
 export const trackInstallLifecycle = async (args: {
   currentVersion: string;
+  explicitInstall?: boolean;
 }): Promise<void> => {
-  const { currentVersion } = args;
+  const context = await trackInstallStarted(args);
+  await trackInstallCompleted({ context, result: "success" });
+};
 
-  try {
-    const now = new Date().toISOString();
-    const stateFromDisk = await readInstallState();
+export const canonicalAnalyticsCommand = (command: string): string | null => {
+  const canonical = COMMAND_ALIASES[command] ?? command;
+  return COMMAND_ALLOWLIST.has(canonical) ? canonical : null;
+};
 
-    let state = stateFromDisk;
-    let isFirstInstall = false;
-    let previousVersion: string | null = null;
-    let shouldSendInstallEvent = false;
+export const trackCommandCompleted = async (args: {
+  command: string;
+  result: AnalyticsResult;
+  currentVersion: string;
+}): Promise<void> => {
+  const command = canonicalAnalyticsCommand(args.command);
+  if (command == null) return;
+  queueCapture(
+    buildEnvelope({
+      event: "skillsets_command_completed",
+      currentVersion: args.currentVersion,
+      properties: { command, result: args.result },
+    }),
+  );
+};
 
-    if (state == null) {
-      const clientId = getDeterministicClientId();
-      state = {
-        schema_version: INSTALL_STATE_SCHEMA_VERSION,
-        client_id: clientId,
-        opt_out: false,
-        first_installed_at: now,
-        last_updated_at: now,
-        last_launched_at: now,
-        installed_version: currentVersion,
-        install_source: getInstallSource(),
-      };
-      shouldSendInstallEvent = true;
-      isFirstInstall = true;
-    } else {
-      if (!state.client_id) {
-        state.client_id = getDeterministicClientId();
-      }
+export const trackWatchStarted = async (args: {
+  currentVersion: string;
+}): Promise<void> => {
+  queueCapture(
+    buildEnvelope({
+      event: "skillsets_watch_started",
+      currentVersion: args.currentVersion,
+    }),
+  );
+};
 
-      // Always update install_source to current value (user may have switched package managers)
-      state.install_source = getInstallSource();
+export const setActiveCommandForAnalytics = (args: {
+  command: string;
+  currentVersion: string;
+}): void => {
+  const command = canonicalAnalyticsCommand(args.command);
+  activeCommand =
+    command == null ? null : { command, currentVersion: args.currentVersion };
+};
 
-      if (
-        semver.valid(currentVersion) != null &&
-        semver.valid(state.installed_version) != null &&
-        semver.gt(currentVersion, state.installed_version)
-      ) {
-        previousVersion = state.installed_version;
-        state.installed_version = currentVersion;
-        state.last_updated_at = now;
-        shouldSendInstallEvent = true;
-        isFirstInstall = false;
-      }
-    }
+export const clearActiveCommandForAnalytics = (): void => {
+  activeCommand = null;
+};
 
-    const isResurrected = stateFromDisk
-      ? shouldTriggerResurrection(stateFromDisk)
-      : false;
+export const trackActiveCommandSuccess = async (): Promise<void> => {
+  const current = activeCommand;
+  activeCommand = null;
+  if (current == null) return;
+  await trackCommandCompleted({ ...current, result: "success" });
+};
 
-    state.last_launched_at = now;
-    state.schema_version = INSTALL_STATE_SCHEMA_VERSION;
+export const trackActiveCommandFailure = async (): Promise<void> => {
+  const current = activeCommand;
+  activeCommand = null;
+  if (current == null) return;
+  await trackCommandCompleted({ ...current, result: "failure" });
+};
 
-    if (!state.first_installed_at) {
-      state.first_installed_at = now;
-    }
-
-    if (!state.last_updated_at) {
-      state.last_updated_at = now;
-    }
-
-    await writeInstallState(state);
-
-    if (isOptedOut(state)) {
-      return;
-    }
-
-    // Calculate days since install
-    const daysSinceInstall = Math.floor(
-      (Date.now() - new Date(state.first_installed_at).getTime()) /
-        (1000 * 60 * 60 * 24),
-    );
-
-    // Build CLI-specific event params per PLAN_ANALYTICS_PROXY.md
-    const cliEventParams: EventParams = {
-      ...buildBaseEventParams(),
-      tilework_cli_executable_name: getTileworkSource(),
-      tilework_cli_installed_version: currentVersion,
-      tilework_cli_install_source: state.install_source,
-      tilework_cli_days_since_install: daysSinceInstall,
-      tilework_cli_node_version: process.versions.node,
-    };
-
-    // Send resurrection event if applicable
-    if (isResurrected) {
-      sendAnalyticsEvent({
-        eventName: "noriprof_user_resurrected",
-        eventParams: cliEventParams,
-        clientId: state.client_id,
-      });
-    }
-
-    // Send install/upgrade event if applicable
-    if (shouldSendInstallEvent) {
-      const installParams: EventParams = {
-        ...cliEventParams,
-        tilework_cli_is_first_install: isFirstInstall,
-      };
-      if (previousVersion != null) {
-        installParams.tilework_cli_previous_version = previousVersion;
-      }
-
-      sendAnalyticsEvent({
-        eventName: "noriprof_install_detected",
-        eventParams: installParams,
-        clientId: state.client_id,
-      });
-    }
-  } catch {
-    // Silent failure - analytics should never block CLI
-  }
+export const exitAfterAnalyticsFailure = async (): Promise<never> => {
+  await completeUnclaimedInstallLifecycle();
+  await trackActiveCommandFailure();
+  await flushProductAnalytics({ timeoutMs: 250 });
+  process.exit(1);
 };

@@ -28,9 +28,9 @@ import {
 } from "@/cli/features/install/asciiArt.js";
 import { ensureNoriInitialized } from "@/cli/features/install/initialize.js";
 import {
-  buildCLIEventParams,
-  getUserId,
-  sendAnalyticsEvent,
+  claimInstallLifecycleForExplicitRun,
+  exitAfterAnalyticsFailure,
+  trackInstallCompleted,
 } from "@/cli/installTracking.js";
 import { isSilentMode, setSilentMode } from "@/cli/logger.js";
 import { getCurrentPackageVersion } from "@/cli/version.js";
@@ -88,54 +88,41 @@ const displayCompletionBanners = (): void => {
  * @param args - Configuration arguments
  * @param args.config - Configuration to use
  * @param args.agent - AI agent implementation
- * @param args.nonInteractive - Whether running in non-interactive mode
  */
 const completeInstallation = async (args: {
   config: Config;
   agent: ReturnType<typeof AgentRegistry.prototype.get>;
-  nonInteractive: boolean;
 }): Promise<void> => {
-  const { config, agent, nonInteractive } = args;
+  const { config, agent } = args;
 
-  // Track installation start (fire-and-forget)
-  void (async () => {
-    const cliParams = await buildCLIEventParams({ config });
-    const userId = await getUserId({ config });
-    sendAnalyticsEvent({
-      eventName: "noriprof_install_started",
-      eventParams: {
-        ...cliParams,
-        tilework_cli_non_interactive: nonInteractive,
-      },
-      userId,
-    });
-  })();
+  const analyticsContext = await claimInstallLifecycleForExplicitRun({
+    currentVersion: getCurrentPackageVersion() ?? "unknown",
+  });
 
   // Create progress marker
   createProgressMarker();
 
-  // Delegate to agent: run loaders, write manifest, mark install
-  await installSkillset({
-    agent,
-    config,
-  });
+  try {
+    // Delegate to agent: run loaders, write manifest, mark install
+    await installSkillset({
+      agent,
+      config,
+    });
+  } catch (error) {
+    await trackInstallCompleted({
+      context: analyticsContext,
+      result: "failure",
+    });
+    throw error;
+  }
 
   // Remove progress marker
   cleanupProgressMarker();
 
-  // Track completion (fire-and-forget)
-  void (async () => {
-    const cliParams = await buildCLIEventParams({ config });
-    const userId = await getUserId({ config });
-    sendAnalyticsEvent({
-      eventName: "noriprof_install_completed",
-      eventParams: {
-        ...cliParams,
-        tilework_cli_non_interactive: nonInteractive,
-      },
-      userId,
-    });
-  })();
+  await trackInstallCompleted({
+    context: analyticsContext,
+    result: "success",
+  });
 
   // Display completion banners
   displayCompletionBanners();
@@ -150,6 +137,8 @@ const completeInstallation = async (args: {
  * @param args.agent - AI agent to use (defaults to claude-code)
  * @param args.skillset - Skillset to use (required if no existing config)
  * @param args.persistActiveSkillset - When false, do not persist the selected skillset to the global config (transient --install-dir switch)
+ *
+ * @returns Resolves when installation completes or exits with failure
  */
 export const noninteractive = async (args?: {
   installDir?: string | null;
@@ -178,7 +167,7 @@ export const noninteractive = async (args?: {
     log.error(
       "No Nori configuration found. Please run 'nori-skillsets init' first.",
     );
-    process.exit(1);
+    return exitAfterAnalyticsFailure();
   }
 
   const existingSkillset = getActiveSkillset({ config: existingConfig });
@@ -188,7 +177,7 @@ export const noninteractive = async (args?: {
       "Non-interactive install requires a skillset when no existing skillset is set",
     );
     note("nori-skillsets install <skillset-name>", "Example");
-    process.exit(1);
+    return exitAfterAnalyticsFailure();
   }
 
   const selectedSkillset = skillset ?? existingSkillset!;
@@ -207,7 +196,7 @@ export const noninteractive = async (args?: {
   const config = await loadConfig();
   if (config == null) {
     log.error("Failed to load configuration after setup.");
-    process.exit(1);
+    return exitAfterAnalyticsFailure();
   }
 
   // Step 3: Complete installation (run loaders, track analytics, display banners)
@@ -231,7 +220,6 @@ export const noninteractive = async (args?: {
         : {}),
     },
     agent: agentImpl,
-    nonInteractive: true,
   });
 };
 
@@ -244,6 +232,8 @@ export const noninteractive = async (args?: {
  * @param args.silent - Whether to suppress all output
  * @param args.skillset - Skillset to use (required if no existing config)
  * @param args.persistActiveSkillset - When false, do not persist the selected skillset to the global config (transient --install-dir switch)
+ *
+ * @returns Resolves when the installer finishes or exits with failure
  */
 export const main = async (args?: {
   nonInteractive?: boolean | null;
@@ -270,9 +260,9 @@ export const main = async (args?: {
       skillset,
       persistActiveSkillset,
     });
-  } catch (err: any) {
-    log.error(err.message);
-    process.exit(1);
+  } catch (error: unknown) {
+    log.error(error instanceof Error ? error.message : String(error));
+    return exitAfterAnalyticsFailure();
   } finally {
     // Always restore console.log and silent mode when done
     if (silent) {

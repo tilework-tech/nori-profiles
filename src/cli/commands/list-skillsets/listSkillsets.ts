@@ -5,12 +5,15 @@
 
 import { log } from "@clack/prompts";
 
+import { exitAfterAnalyticsFailure } from "@/cli/installTracking.js";
 import { listSkillsetsWithMetadata } from "@/norijson/skillset.js";
 
 import type { Command } from "commander";
 
 /**
  * Main function for list-skillsets command
+ *
+ * @returns Resolves after writing the installed skillsets or exiting with failure
  */
 export const listSkillsetsMain = async (): Promise<void> => {
   // Get and output skillsets - one per line for easy parsing
@@ -19,7 +22,7 @@ export const listSkillsetsMain = async (): Promise<void> => {
 
   if (skillsets.length === 0) {
     log.error("No skillsets installed.");
-    process.exit(1);
+    return exitAfterAnalyticsFailure();
   }
 
   // Output raw lines for scripting

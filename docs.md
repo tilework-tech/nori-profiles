@@ -12,6 +12,8 @@ This is the repository root. The project is a TypeScript Node.js application bui
 
 This repo participates in the Nori shared local runner layer -- a cross-repo convention providing standardized `just` targets (`help`, `dev`, `test`, `doctor`) for orientation and discovery. The same target contract exists in `sessions`, `registrar`, `admin`, and `cli`.
 
+Authenticated product analytics is a separate first-party path from registry access. The CLI sender in [`@/src/cli/installTracking.ts`](src/cli/installTracking.ts) sends strict, allowlisted activity envelopes to `https://login.norisessions.com/api/analytics/v1/events` only when it has a human Firebase identity and a usable ID token. The Sessions OAuth proxy owns email identity, organization expansion, internal-user filtering, and PostHog delivery; this package never embeds a PostHog credential or infers organization attribution.
+
 ```
 User runs CLI command
         |
@@ -27,6 +29,14 @@ User runs CLI command
   @/src/norijson/*             (manifest parsing)
   @/src/providers/*            (Firebase singleton)
   @/src/utils/*                (URL, path, fetch helpers)
+
+  successful meaningful command
+        |
+        v
+  @/src/cli/installTracking.ts
+        |
+        v
+  login.norisessions.com -> Sessions OAuth proxy -> PostHog
 ```
 
 ### Core Implementation
@@ -44,6 +54,8 @@ The build process compiles TypeScript, resolves `@/` path aliases via `tsc-alias
 The config system supports two formats: a legacy flat format (pre-v19) with credentials at the root level, and a nested `auth: {...}` format (v19+). Both are handled transparently by `loadConfig()` in `@/src/cli/config.ts` and `ConfigManager.loadConfig()` in `@/src/api/base.ts`.
 
 The registrar API (`@/src/api/registrar.ts`) uses a fallback mechanism: requests to `/api/skillsets/` that return 404 are silently retried against `/api/profiles/` to support older registry servers. Skillset operations and skill operations use separate API endpoint paths (`/api/skillsets/` vs `/api/skills/`).
+
+Product analytics is best effort. `NORI_NO_ANALYTICS=1` and the durable `.nori/profiles/.nori-install.json` `opt_out` flag disable it. Missing/expired human authentication, service identities, API-token-only configs, network failures, and timeouts silently skip delivery without changing command output or exit status. Help, version, login/logout, syntax, completion, and update checks do not become meaningful activity.
 
 The `prepublishOnly` npm hook serves as a safeguard against accidental direct publishing rather than as an active part of the release workflow. It exits with a non-zero status and instructs the user to use the proper release script.
 

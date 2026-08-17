@@ -11,6 +11,26 @@ import { intro, outro } from "@clack/prompts";
 
 import type { Command } from "commander";
 
+const reportActiveCommandFailure = async (): Promise<void> => {
+  try {
+    const analytics = await import("@/cli/installTracking.js");
+    await analytics.completeUnclaimedInstallLifecycle?.();
+    await analytics.trackActiveCommandFailure?.();
+    await analytics.flushProductAnalytics?.({ timeoutMs: 250 });
+  } catch {
+    // Analytics must never replace command behavior.
+  }
+};
+
+const clearActiveCommandAnalytics = async (): Promise<void> => {
+  try {
+    const analytics = await import("@/cli/installTracking.js");
+    analytics.clearActiveCommandForAnalytics?.();
+  } catch {
+    // Analytics must never replace command behavior.
+  }
+};
+
 /**
  * Wrap a command action with intro/outro framing.
  * The intro is displayed before the command runs, and the outro is displayed
@@ -39,6 +59,11 @@ const wrapWithFraming = async <
     if (!result.cancelled && !silent) {
       outro(result.message);
     }
+    if (result.cancelled) {
+      await clearActiveCommandAnalytics();
+    } else if (!result.success) {
+      await reportActiveCommandFailure();
+    }
     if (exitOnFailure && !result.success && !result.cancelled) {
       process.exit(1);
     }
@@ -46,6 +71,7 @@ const wrapWithFraming = async <
     if (!silent) {
       outro(`Error: ${err instanceof Error ? err.message : String(err)}`);
     }
+    await reportActiveCommandFailure();
     process.exit(1);
   }
 };
@@ -898,12 +924,27 @@ export const registerNoriSkillsetsWatchCommand = (args: {
         const { watchMain } = await import("@/cli/commands/watch/watch.js");
         await wrapWithFraming({
           title: "nori watch",
-          action: () =>
-            watchMain({
+          action: async () => {
+            const result = await watchMain({
               agent: options.agent ?? null,
               setDestination: options.setDestination ?? false,
               _background: options._background ?? false,
-            }),
+            });
+            if (
+              options._background === true &&
+              result.success &&
+              !result.cancelled
+            ) {
+              const { trackWatchStarted } =
+                await import("@/cli/installTracking.js");
+              const { getCurrentPackageVersion } =
+                await import("@/cli/version.js");
+              await trackWatchStarted({
+                currentVersion: getCurrentPackageVersion() ?? "unknown",
+              });
+            }
+            return result;
+          },
         });
       },
     );

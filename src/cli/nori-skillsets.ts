@@ -45,8 +45,11 @@ import {
 import { setGlobalAgentOverride } from "@/cli/config.js";
 import { AgentRegistry } from "@/cli/features/agentRegistry.js";
 import {
-  setTileworkSource,
-  trackInstallLifecycle,
+  beginLaunchInstallLifecycle,
+  completeUnclaimedInstallLifecycle,
+  flushProductAnalytics,
+  setActiveCommandForAnalytics,
+  trackActiveCommandSuccess,
 } from "@/cli/installTracking.js";
 import { runProfilesMigration } from "@/cli/profilesMigration.js";
 import { checkForUpdateAndPrompt } from "@/cli/updates/checkForUpdate.js";
@@ -60,11 +63,6 @@ initializeProxySupport();
 
 const program = new Command();
 const version = getCurrentPackageVersion() || "unknown";
-
-// Set the tilework source for analytics before any tracking calls
-setTileworkSource({ source: "nori-skillsets" });
-
-void trackInstallLifecycle({ currentVersion: version });
 
 // Check for updates before parsing commands (skip for informational flags)
 const isSilent =
@@ -81,6 +79,8 @@ const isInfoOnly =
   process.argv.includes("-V");
 
 if (!isInfoOnly) {
+  await beginLaunchInstallLifecycle({ currentVersion: version });
+
   // Relocate legacy bare profiles into personal/ and public/ buckets before any
   // command reads them. Best-effort — never block the CLI on a migration error.
   try {
@@ -188,9 +188,19 @@ Skillset template syntax:
 `,
   );
 
-program.hook("preAction", (thisCommand) => {
+program.hook("preAction", (thisCommand, actionCommand) => {
   const opts = thisCommand.opts();
   setGlobalAgentOverride(opts.agent ?? null);
+  setActiveCommandForAnalytics({
+    command: actionCommand.name(),
+    currentVersion: version,
+  });
+});
+
+program.hook("postAction", async () => {
+  await completeUnclaimedInstallLifecycle();
+  await trackActiveCommandSuccess();
+  await flushProductAnalytics({ timeoutMs: 250 });
 });
 
 // Register simplified commands for nori-skillsets CLI
@@ -227,7 +237,7 @@ registerNoriSkillsetsFactoryResetCommand({ program });
 registerNoriSkillsetsConfigCommand({ program });
 registerNoriSkillsetsSyntaxCommand({ program });
 
-program.parse(process.argv);
+await program.parseAsync(process.argv);
 
 // Show help if no command provided
 if (process.argv.length < 3) {

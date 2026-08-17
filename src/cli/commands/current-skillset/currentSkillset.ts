@@ -10,6 +10,7 @@ import { log } from "@clack/prompts";
 import { loadConfig, getActiveSkillset } from "@/cli/config.js";
 import { getInstalledSkillsetName } from "@/cli/features/agentOperations.js";
 import { AgentRegistry } from "@/cli/features/agentRegistry.js";
+import { exitAfterAnalyticsFailure } from "@/cli/installTracking.js";
 import { resolveSkillsetDir, skillsetIdentity } from "@/norijson/skillset.js";
 
 /**
@@ -70,6 +71,8 @@ export const getSkillsetAtInstallDir = (args: {
  *   the skillset installed at that directory via `.nori-managed` markers
  *   instead of global `activeSkillset`. Needed after switch `-d` no longer
  *   persists global config (nori-skillsets#538).
+ *
+ * @returns Resolves after writing the active skillset or exiting with failure
  */
 export const currentSkillsetMain = async (args: {
   agent?: string | null;
@@ -85,16 +88,14 @@ export const currentSkillsetMain = async (args: {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.error(message);
-      process.exit(1);
-      return;
+      return exitAfterAnalyticsFailure();
     }
 
     if (skillset == null) {
       log.error(
         `No skillset installed at ${path.resolve(args.installDir)}. Use 'nori-skillsets switch -d <dir> <name>' to install one.`,
       );
-      process.exit(1);
-      return;
+      return exitAfterAnalyticsFailure();
     }
 
     process.stdout.write(skillset + "\n");
@@ -108,8 +109,7 @@ export const currentSkillsetMain = async (args: {
     log.error(
       "No active skillset configured. Use 'nori-skillsets switch <name>' to set one.",
     );
-    process.exit(1);
-    return;
+    return exitAfterAnalyticsFailure();
   }
 
   const skillset = getActiveSkillset({ config });
@@ -118,8 +118,7 @@ export const currentSkillsetMain = async (args: {
     log.error(
       "No active skillset configured. Use 'nori-skillsets switch <name>' to set one.",
     );
-    process.exit(1);
-    return;
+    return exitAfterAnalyticsFailure();
   }
 
   // Display the namespaced identity (e.g. personal/foo) even if the stored

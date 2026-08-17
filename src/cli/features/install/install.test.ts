@@ -7,11 +7,18 @@ import * as clack from "@clack/prompts";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import { getConfigPath } from "@/cli/config.js";
+import * as agentOperations from "@/cli/features/agentOperations.js";
+import * as installTracking from "@/cli/installTracking.js";
 import { saveTestingConfig } from "@/cli/test-utils/config.js";
 
 import type * as versionModule from "@/cli/version.js";
 
 import { noninteractive } from "./install.js";
+
+const installAnalytics = installTracking as unknown as {
+  claimInstallLifecycleForExplicitRun: ReturnType<typeof vi.fn>;
+  trackInstallCompleted: ReturnType<typeof vi.fn>;
+};
 
 // Mock paths module to use test directory
 vi.mock("@/cli/features/claude-code/paths.js", () => {
@@ -54,8 +61,19 @@ vi.mock("@/cli/analytics.js", () => ({
 // Mock install tracking to prevent analytics during tests
 vi.mock("@/cli/installTracking.js", () => ({
   buildCLIEventParams: vi.fn().mockResolvedValue({}),
+  exitAfterAnalyticsFailure: vi.fn().mockImplementation(async () => {
+    process.exit(1);
+  }),
+  flushProductAnalytics: vi.fn().mockResolvedValue(undefined),
   getUserId: vi.fn().mockResolvedValue(null),
   sendAnalyticsEvent: vi.fn(),
+  trackActiveCommandFailure: vi.fn().mockResolvedValue(undefined),
+  claimInstallLifecycleForExplicitRun: vi.fn().mockResolvedValue({
+    activityId: "0198cafe-7b6a-7f9c-9d6e-2c708e145f03",
+    installKind: "reinstall",
+    currentVersion: "20.0.0",
+  }),
+  trackInstallCompleted: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock init to avoid side effects
@@ -355,5 +373,70 @@ describe("install noninteractive", () => {
     const configPath = getConfigPath();
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     expect(config.activeSkillset).toBe("senior-swe");
+  });
+
+  it("brackets an explicit installer run with successful lifecycle events", async () => {
+    await saveTestingConfig({
+      username: "human@example.com",
+      organizationUrl: "https://acme.noriskillsets.dev",
+      refreshToken: "refresh-token",
+      activeSkillset: "senior-swe",
+      installDir: tempDir,
+    });
+
+    await noninteractive({
+      installDir: tempDir,
+      skillset: "senior-swe",
+    });
+
+    expect(
+      installAnalytics.claimInstallLifecycleForExplicitRun,
+    ).toHaveBeenCalledWith({
+      currentVersion: "20.0.0",
+    });
+    expect(installAnalytics.trackInstallCompleted).toHaveBeenCalledWith({
+      context: {
+        activityId: "0198cafe-7b6a-7f9c-9d6e-2c708e145f03",
+        installKind: "reinstall",
+        currentVersion: "20.0.0",
+      },
+      result: "success",
+    });
+    expect(
+      installAnalytics.claimInstallLifecycleForExplicitRun.mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
+      vi.mocked(agentOperations.installSkillset).mock.invocationCallOrder[0]!,
+    );
+    expect(
+      vi.mocked(agentOperations.installSkillset).mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      installAnalytics.trackInstallCompleted.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("reports installer failure before preserving the original error", async () => {
+    await saveTestingConfig({
+      username: "human@example.com",
+      organizationUrl: "https://acme.noriskillsets.dev",
+      refreshToken: "refresh-token",
+      activeSkillset: "senior-swe",
+      installDir: tempDir,
+    });
+    vi.mocked(agentOperations.installSkillset).mockRejectedValueOnce(
+      new Error("install failed"),
+    );
+
+    await expect(
+      noninteractive({
+        installDir: tempDir,
+        skillset: "senior-swe",
+      }),
+    ).rejects.toThrow("install failed");
+
+    expect(installAnalytics.trackInstallCompleted).toHaveBeenCalledWith({
+      context: expect.objectContaining({ installKind: "reinstall" }),
+      result: "failure",
+    });
   });
 });

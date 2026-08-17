@@ -10,6 +10,8 @@ The watch command monitors Claude Code session files and copies transcripts to `
 
 Registered via `@/src/cli/commands/noriSkillsetsCommands.ts` with a `stop` subcommand. The watch command accepts a local `--agent` option that is passed directly to `watchMain`, so it uses the command-level value rather than the global `--agent` override. The interactive flow is handled by `@/cli/prompts/flows/watch.js`. Transcript uploads go through `@/api/transcript.js`. Configuration for transcript destination org is persisted to `.nori-config.json` via `@/cli/config.js`.
 
+Only the detached `--_background` process queues the meaningful `skillsets_watch_started` event through @/src/cli/installTracking.ts, after `waitForWatcherReady` and the remaining daemon setup return success. The foreground command merely spawns that process and does not emit the event. `watch stop`, cancelled setup, and failed daemon initialization do not emit it; transcript contents and destinations are never analytics properties.
+
 ### Core Implementation
 
 `watchMain` has two modes. In foreground (default), it runs the interactive flow to select a transcript destination org, stops any existing daemon, then spawns a detached background process with the `--_background` flag. In background mode, it initializes the file watcher, PID file, log file, transcript registry, and stale scanner.
