@@ -10,6 +10,7 @@ import { log } from "@clack/prompts";
 
 import { getInstalledSkillsetName } from "@/cli/features/agentOperations.js";
 import { AgentRegistry } from "@/cli/features/agentRegistry.js";
+import { exitAfterAnalyticsFailure } from "@/cli/installTracking.js";
 
 export const findActiveSkillsets = async (args: {
   dir?: string | null;
@@ -45,7 +46,7 @@ export const listActiveMain = async (args: {
 
   if (skillsets.length === 0) {
     log.error("No active skillsets found.");
-    process.exit(1);
+    return exitAfterAnalyticsFailure();
   }
 
   for (const skillset of skillsets) {

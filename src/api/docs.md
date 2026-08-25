@@ -4,7 +4,7 @@ Path: @/src/api
 
 ### Overview
 
-The API module contains HTTP clients for all external service communication: the skillset/skill registry (registrar), analytics event tracking, transcript uploads, and Firebase authentication token management. All authenticated requests flow through a centralized `apiRequest` function with retry logic and token refresh.
+The API module contains HTTP clients for registry operations, transcript uploads, and Firebase authentication token management. Registry-authenticated requests flow through a centralized `apiRequest` function with retry logic and token refresh. A legacy analytics helper remains for compatibility but is not the authenticated product-analytics client.
 
 ### How it fits into the larger codebase
 
@@ -36,11 +36,11 @@ API tokens have format `nori_<orgId>_<64 hex chars>`. The orgId is extracted fro
 
 Each `SkillConflict` / `SubagentConflict` item in the 409 body may carry an optional `fileChanges?: ReadonlyArray<FileChange> | null` list of per-file entries (`{ path, status: "added" | "modified" | "removed", isBinary, existingContent?, existingTruncated? }`) describing the added/modified/removed files between the upload bundle and the existing latest version. The field flows in transparently via JSON decode in the existing 409 parsing logic — there is no bespoke wire-format handling — and is mirrored in the `SkillConflictInfo` / `SubagentConflictInfo` shapes on the corresponding error classes in `@/src/utils/fetch.ts`. The field is optional for backwards compatibility with registrars that pre-date its introduction; the CLI consumer in `@/src/cli/prompts/flows/upload.ts` treats `null`/`undefined`/empty as "no file-level detail available" and falls back to generic discard messaging. The upload request body is unchanged — this is purely a display-oriented response enrichment.
 
-**`refreshToken.ts`** exchanges Firebase refresh tokens for ID tokens using the Firebase REST API directly (not the SDK), because the SDK requires an active user session. It maintains its own in-memory cache with a 5-minute safety buffer before expiry.
+**`refreshToken.ts`** exchanges Firebase refresh tokens for ID tokens using the Firebase REST API directly (not the SDK), because the SDK requires an active user session. It maintains its own in-memory cache with a 5-minute safety buffer before expiry. Callers may pass an `AbortSignal`; the analytics client uses it to bound token refresh and event delivery under one request deadline, while existing registry callers retain the uncancelled behavior.
 
 **`registryAuth.ts`** provides per-registry-URL token caching for Firebase ID tokens and precedence-checks for API tokens. Its `RegistryAuth` input type comes from `authCredentials.ts` (it previously came from `@/src/cli/config.ts`). `getRegistryAuthToken` evaluates env-var API tokens (scoped match against the orgId parsed from the token), then config API tokens (scoped match against the orgId parsed from the token), then an unexpired direct `idToken` from config, then the cached Firebase token, then performs a refresh-token exchange. API tokens short-circuit before the cache is consulted and are never written back to the cache. Direct `idToken` config is the broker-managed session-machine path; it is not refreshable by `nori-skillsets`, so expired direct tokens fall through to refresh-token auth only when a refresh token is also present.
 
-**`analytics.ts`** fires analytics events to the organization URL (or a default). Failures are silently swallowed to avoid interrupting user flow.
+**`analytics.ts`** is a retained legacy helper with its historical organization-URL request shape. New releases do not use it for product activity. The authenticated v1 sender is `@/src/cli/installTracking.ts`, which uses a human Firebase ID token and the first-party login endpoint without foreground retries.
 
 **`transcript.ts`** uploads session transcripts via `apiRequest`, optionally routing to organization-specific subdomains. The upload payload conditionally includes `projectName` and `skillsetName` -- both are nullable and only included when non-null.
 
@@ -50,6 +50,6 @@ There are three layers of token caching, all exclusively for refresh-token-deriv
 
 Target org is derived from the request URL at resolution time via `extractOrgId` from `@/src/utils/url.ts`, and the token's own org is derived via `extractOrgIdFromApiToken` from `@/src/utils/apiToken.ts`. Cross-org API-token use is never silently promoted — if the two orgIds do not match, the resolver falls through to the next precedence level (which mirrors the server's 403 behavior for cross-org tokens, failing faster client-side when the mismatch is knowable).
 
-`ConfigManager.loadConfig()` in `base.ts` handles an expected race condition during fresh installation where the config file may be empty because analytics fires before the file is fully written. Empty files return `{}` rather than throwing.
+`ConfigManager.loadConfig()` in `base.ts` tolerates an empty config file during fresh installation by returning `{}` rather than throwing. This remains part of the generic API compatibility behavior even though the v1 analytics sender uses the async CLI config loader.
 
 Created and maintained by Nori.

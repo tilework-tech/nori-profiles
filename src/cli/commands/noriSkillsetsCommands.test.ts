@@ -3,9 +3,37 @@
  */
 
 import { Command } from "commander";
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { registerNoriSkillsetsUploadSkillCommand } from "./noriSkillsetsCommands.js";
+import * as installTracking from "@/cli/installTracking.js";
+
+import {
+  registerNoriSkillsetsUploadSkillCommand,
+  registerNoriSkillsetsWatchCommand,
+} from "./noriSkillsetsCommands.js";
+
+vi.mock("@/cli/installTracking.js", () => ({
+  trackWatchStarted: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/cli/version.js", () => ({
+  getCurrentPackageVersion: vi.fn().mockReturnValue("2.4.0"),
+}));
+
+vi.mock("@/cli/commands/watch/watch.js", () => ({
+  watchMain: vi.fn().mockResolvedValue({
+    success: true,
+    cancelled: false,
+    message: "watch started",
+  }),
+  watchStopMain: vi.fn().mockResolvedValue(undefined),
+}));
+
+const trackWatchStarted = (
+  installTracking as unknown as {
+    trackWatchStarted: ReturnType<typeof vi.fn>;
+  }
+).trackWatchStarted;
 
 describe("registerNoriSkillsetsUploadSkillCommand", () => {
   const buildUploadSkillCommand = (): Command => {
@@ -37,5 +65,20 @@ describe("registerNoriSkillsetsUploadSkillCommand", () => {
         "--description",
       ]),
     );
+  });
+});
+
+describe("registerNoriSkillsetsWatchCommand analytics", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("does not emit watch-started for watch stop", async () => {
+    const program = new Command().exitOverride();
+    registerNoriSkillsetsWatchCommand({ program });
+
+    await program.parseAsync(["watch", "stop"], { from: "user" });
+
+    expect(trackWatchStarted).not.toHaveBeenCalled();
   });
 });

@@ -10,6 +10,8 @@ The commands directory contains all CLI command implementations for the `nori-sk
 
 The CLI entry point delegates to `noriSkillsetsCommands.ts`, which registers every command with a Commander.js `program` instance. Each registration function imports the `*Main` entry point from the corresponding subdirectory and wires it to Commander options/arguments. Commands depend on `@/cli/config.js` for configuration, `@/cli/features/` for agent integration and skillset management (including the install orchestration at @/src/cli/features/install/, imported statically), `@/api/` for registry API calls, `@/packaging/` for package mechanics (tarballs, atomic installs, `.nori-version` provenance, registry lookup — see @/src/packaging/docs.md), and `@/cli/prompts/flows/` for interactive user prompts.
 
+The Commander declaration is also the trust boundary for activity metadata. `@/src/cli/nori-skillsets.ts` passes the declared action-command name to @/src/cli/installTracking.ts, where aliases are reduced to a small canonical allowlist. Raw argv, option values, paths, and command arguments never enter analytics.
+
 ### Core Implementation
 
 `cliCommandNames.ts` defines the `CommandNames` type and a lookup table that maps logical command names (e.g., `download`, `externalSkill`) to their CLI string equivalents. This is consumed by commands that need to display command hints in error messages.
@@ -33,6 +35,8 @@ Registration layer (noriSkillsetsCommands.ts)      <-- intro() / outro() live he
 ```
 
 When `silent` is true, `wrapWithFraming` suppresses all `intro()`/`outro()` output, including error messages. The `silent` flag is forwarded from the global `--silent` CLI option at the registration layer.
+
+`wrapWithFraming` also preserves command-result analytics around existing exit behavior. A non-cancelled failure or thrown error queues the active canonical command with `result: failure` and performs a short bounded flush before `process.exit(1)`; cancellation clears the active command without capture. Unframed allowlisted commands with direct failure exits use `exitAfterAnalyticsFailure` from @/src/cli/installTracking.ts for the same completion-and-flush sequence. Successful actions are reported once by the entrypoint's Commander `postAction` hook. Analytics errors are swallowed so framing, output, and exit semantics remain authoritative.
 
 Commands that do not need visual framing (single-step, scriptable, or producing raw output) are called directly without `wrapWithFraming`. These include `clear`, `clear-current`, `completion`, `list`, `list-active`, `current`, `logout`, `dir`, `install-location`, and `watch stop`.
 

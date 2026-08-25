@@ -54,13 +54,15 @@ type FirebaseTokenResponse = {
  * Exchange a Firebase refresh token for a new ID token
  * @param args - The exchange parameters
  * @param args.refreshToken - The refresh token to exchange
+ * @param args.signal - Optional cancellation signal for bounded callers
  *
  * @returns The new ID token and refresh token
  */
 export const exchangeRefreshToken = async (args: {
   refreshToken: string;
+  signal?: AbortSignal;
 }): Promise<RefreshTokenResult> => {
-  const { refreshToken } = args;
+  const { refreshToken, signal } = args;
 
   // Check cache first
   const cached = tokenCache.get(refreshToken);
@@ -81,6 +83,7 @@ export const exchangeRefreshToken = async (args: {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`,
+      signal,
     });
   } catch (err) {
     // Network errors from fetch - wrap with helpful message

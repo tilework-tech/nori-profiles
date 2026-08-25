@@ -1,1124 +1,526 @@
-import * as fs from "fs/promises";
-import * as os from "os";
-import * as path from "path";
+import { promises as fs } from "node:fs";
+import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  getTileworkSource,
-  setTileworkSource,
-  trackInstallLifecycle,
-} from "./installTracking.js";
+import * as installTracking from "./installTracking.js";
 
-const INSTALL_STATE_FILE = ".nori-install.json";
-
-const getTestInstallStatePath = (): string => {
-  return path.join(os.homedir(), ".nori", "profiles", INSTALL_STATE_FILE);
+type ProductAnalyticsExports = {
+  flushProductAnalytics: (args: { timeoutMs: number }) => Promise<void>;
+  trackCommandCompleted: (args: {
+    command: string;
+    result: "success" | "failure";
+    currentVersion: string;
+  }) => Promise<void>;
+  trackInstallLifecycle: (args: {
+    currentVersion: string;
+    explicitInstall?: boolean;
+  }) => Promise<void>;
+  trackWatchStarted: (args: { currentVersion: string }) => Promise<void>;
 };
 
-describe("installTracking", () => {
-  let originalEnv: NodeJS.ProcessEnv;
+const productAnalytics =
+  installTracking as unknown as Partial<ProductAnalyticsExports>;
+const flushProductAnalytics =
+  productAnalytics.flushProductAnalytics ?? (async () => undefined);
+const trackCommandCompleted =
+  productAnalytics.trackCommandCompleted ?? (async () => undefined);
+const trackInstallLifecycle =
+  productAnalytics.trackInstallLifecycle ??
+  installTracking.trackInstallLifecycle;
+const trackWatchStarted =
+  productAnalytics.trackWatchStarted ?? (async () => undefined);
+
+type AnalyticsRequest = {
+  schema_version: number;
+  event: string;
+  activity_id: string;
+  occurred_at: string;
+  product: string;
+  surface: string;
+  app_version: string;
+  properties?: Record<string, unknown>;
+};
+
+const ANALYTICS_URL = "http://127.0.0.1:19500/api/analytics/v1/events";
+const FIREBASE_TOKEN_URL_PREFIX = "https://securetoken.googleapis.com/v1/token";
+
+const getConfigPath = (): string =>
+  path.join(process.env.NORI_GLOBAL_CONFIG!, ".nori-config.json");
+
+const getInstallStatePath = (): string =>
+  path.join(
+    process.env.NORI_GLOBAL_CONFIG!,
+    ".nori",
+    "profiles",
+    ".nori-install.json",
+  );
+
+const writeConfig = async (auth: Record<string, unknown>): Promise<void> => {
+  await fs.writeFile(
+    getConfigPath(),
+    `${JSON.stringify({
+      installDir: path.join(process.env.NORI_GLOBAL_CONFIG!, ".claude"),
+      auth: {
+        username: "user@example.com",
+        organizationUrl: "https://acme.noriskillsets.dev",
+        ...auth,
+      },
+    })}\n`,
+  );
+};
+
+const writeInstallState = async (
+  overrides: Record<string, unknown> = {},
+): Promise<void> => {
+  const now = new Date().toISOString();
+  await fs.mkdir(path.dirname(getInstallStatePath()), { recursive: true });
+  await fs.writeFile(
+    getInstallStatePath(),
+    `${JSON.stringify({
+      schema_version: 1,
+      client_id: "c4f24cc9-acde-4d20-87e1-1d6bfa8e7a67",
+      opt_out: false,
+      first_installed_at: now,
+      last_updated_at: now,
+      last_launched_at: now,
+      installed_version: "1.0.0",
+      install_source: "npm",
+      ...overrides,
+    })}\n`,
+  );
+};
+
+const analyticsCalls = (fetchMock: ReturnType<typeof vi.fn>) =>
+  fetchMock.mock.calls.filter(([url]) => String(url) === ANALYTICS_URL);
+
+const analyticsBodies = (
+  fetchMock: ReturnType<typeof vi.fn>,
+): Array<AnalyticsRequest> =>
+  analyticsCalls(fetchMock).map(([, init]) =>
+    JSON.parse(String((init as RequestInit).body)),
+  );
+
+describe("authenticated product analytics", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
-  let installStatePath: string;
-  let tempProfilesDir: string;
+  let testHome: string;
 
   beforeEach(async () => {
-    originalEnv = { ...process.env };
-    installStatePath = getTestInstallStatePath();
-    tempProfilesDir = path.dirname(installStatePath);
+    testHome = await fs.mkdtemp("/tmp/nori-skillsets-analytics-");
+    process.env.NORI_GLOBAL_CONFIG = testHome;
+    process.env.NORI_ANALYTICS_URL = ANALYTICS_URL;
+    delete process.env.NORI_NO_ANALYTICS;
 
-    // Ensure the profiles directory exists
-    await fs.mkdir(tempProfilesDir, { recursive: true });
-
-    // Clear any existing install state
-    try {
-      await fs.unlink(installStatePath);
-    } catch {
-      // File doesn't exist, that's fine
-    }
-
-    // Mock fetch
-    fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 202,
+      json: async () => ({ accepted: true }),
+    });
     vi.stubGlobal("fetch", fetchMock);
   });
 
   afterEach(async () => {
-    process.env = originalEnv;
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-
-    // Clean up install state file
-    try {
-      await fs.unlink(installStatePath);
-    } catch {
-      // File doesn't exist, that's fine
+    if (typeof flushProductAnalytics === "function") {
+      await flushProductAnalytics({ timeoutMs: 20 });
     }
-  });
-
-  describe("resurrection threshold calculation", () => {
-    it("should trigger resurrection after more than 30 days of inactivity", async () => {
-      // Create state with last_launched_at 31 days ago (just over threshold)
-      const thirtyOneDaysAgo = new Date(
-        Date.now() - 31 * 24 * 60 * 60 * 1000,
-      ).toISOString();
-
-      await fs.writeFile(
-        installStatePath,
-        JSON.stringify({
-          schema_version: 1,
-          client_id: "test-client-id",
-          opt_out: false,
-          first_installed_at: thirtyOneDaysAgo,
-          last_updated_at: thirtyOneDaysAgo,
-          last_launched_at: thirtyOneDaysAgo,
-          installed_version: "1.0.0",
-          install_source: "npm",
-        }),
-      );
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      // Should have sent noriprof_user_resurrected event
-      const resurrectedCall = fetchMock.mock.calls.find((call) => {
-        const body = JSON.parse(call[1].body);
-        return body.event_name === "noriprof_user_resurrected";
-      });
-
-      expect(resurrectedCall).toBeDefined();
-    });
-
-    it("should NOT trigger resurrection at 29 days 23 hours", async () => {
-      // Create state with last_launched_at just under 30 days ago
-      const justUnder30Days = new Date(
-        Date.now() - (30 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000),
-      ).toISOString();
-
-      await fs.writeFile(
-        installStatePath,
-        JSON.stringify({
-          schema_version: 1,
-          client_id: "test-client-id",
-          opt_out: false,
-          first_installed_at: justUnder30Days,
-          last_updated_at: justUnder30Days,
-          last_launched_at: justUnder30Days,
-          installed_version: "1.0.0",
-          install_source: "npm",
-        }),
-      );
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      // Should NOT have sent user_resurrected event
-      const resurrectedCall = fetchMock.mock.calls.find((call) => {
-        const body = JSON.parse(call[1].body);
-        return body.event_name === "noriprof_user_resurrected";
-      });
-
-      expect(resurrectedCall).toBeUndefined();
-    });
-
-    it("should use days (not seconds) for resurrection threshold", async () => {
-      // 30 seconds ago - if threshold was in seconds, this would trigger resurrection
-      const thirtySecondsAgo = new Date(Date.now() - 30 * 1000).toISOString();
-
-      await fs.writeFile(
-        installStatePath,
-        JSON.stringify({
-          schema_version: 1,
-          client_id: "test-client-id",
-          opt_out: false,
-          first_installed_at: thirtySecondsAgo,
-          last_updated_at: thirtySecondsAgo,
-          last_launched_at: thirtySecondsAgo,
-          installed_version: "1.0.0",
-          install_source: "npm",
-        }),
-      );
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      // Should NOT have sent user_resurrected event (30 seconds is not 30 days)
-      const resurrectedCall = fetchMock.mock.calls.find((call) => {
-        const body = JSON.parse(call[1].body);
-        return body.event_name === "noriprof_user_resurrected";
-      });
-
-      expect(resurrectedCall).toBeUndefined();
-    });
-  });
-
-  describe("install_source update on change", () => {
-    it("should update install_source when package manager changes", async () => {
-      // Create state with npm as install_source
-      const existingState = {
-        schema_version: 1,
-        client_id: "test-client-id",
-        opt_out: false,
-        first_installed_at: new Date().toISOString(),
-        last_updated_at: new Date().toISOString(),
-        last_launched_at: new Date().toISOString(),
-        installed_version: "1.0.0",
-        install_source: "npm",
-      };
-
-      await fs.writeFile(installStatePath, JSON.stringify(existingState));
-
-      // Simulate running from bun
-      process.env.npm_config_user_agent = "bun/1.0.0";
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      // Read the updated state
-      const updatedContent = await fs.readFile(installStatePath, "utf-8");
-      const updatedState = JSON.parse(updatedContent);
-
-      expect(updatedState.install_source).toBe("bun");
-    });
-
-    it("should NOT update install_source when package manager is the same", async () => {
-      const originalDate = "2024-01-01T00:00:00.000Z";
-      const existingState = {
-        schema_version: 1,
-        client_id: "test-client-id",
-        opt_out: false,
-        first_installed_at: originalDate,
-        last_updated_at: originalDate,
-        last_launched_at: originalDate,
-        installed_version: "1.0.0",
-        install_source: "npm",
-      };
-
-      await fs.writeFile(installStatePath, JSON.stringify(existingState));
-
-      // Simulate running from npm (same as existing)
-      process.env.npm_config_user_agent = "npm/10.0.0";
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      // Read the updated state
-      const updatedContent = await fs.readFile(installStatePath, "utf-8");
-      const updatedState = JSON.parse(updatedContent);
-
-      // install_source should remain npm
-      expect(updatedState.install_source).toBe("npm");
-    });
-  });
-
-  describe("state field backfill on startup", () => {
-    it("should populate client_id if missing from existing state", async () => {
-      const existingState = {
-        schema_version: 1,
-        // Missing client_id
-        opt_out: false,
-        first_installed_at: new Date().toISOString(),
-        last_updated_at: new Date().toISOString(),
-        last_launched_at: new Date().toISOString(),
-        installed_version: "1.0.0",
-        install_source: "npm",
-      };
-
-      await fs.writeFile(installStatePath, JSON.stringify(existingState));
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      const updatedContent = await fs.readFile(installStatePath, "utf-8");
-      const updatedState = JSON.parse(updatedContent);
-
-      expect(updatedState.client_id).toBeDefined();
-      expect(updatedState.client_id).toMatch(/^[a-f0-9-]{36}$/i);
-    });
-
-    it("should populate install_source if missing from existing state", async () => {
-      const existingState = {
-        schema_version: 1,
-        client_id: "test-client-id",
-        opt_out: false,
-        first_installed_at: new Date().toISOString(),
-        last_updated_at: new Date().toISOString(),
-        last_launched_at: new Date().toISOString(),
-        installed_version: "1.0.0",
-        // Missing install_source
-      };
-
-      await fs.writeFile(installStatePath, JSON.stringify(existingState));
-      process.env.npm_config_user_agent = "yarn/4.0.0";
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      const updatedContent = await fs.readFile(installStatePath, "utf-8");
-      const updatedState = JSON.parse(updatedContent);
-
-      expect(updatedState.install_source).toBe("yarn");
-    });
-
-    it("should populate first_installed_at if missing from existing state", async () => {
-      const existingState = {
-        schema_version: 1,
-        client_id: "test-client-id",
-        opt_out: false,
-        // Missing first_installed_at
-        last_updated_at: new Date().toISOString(),
-        last_launched_at: new Date().toISOString(),
-        installed_version: "1.0.0",
-        install_source: "npm",
-      };
-
-      await fs.writeFile(installStatePath, JSON.stringify(existingState));
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      const updatedContent = await fs.readFile(installStatePath, "utf-8");
-      const updatedState = JSON.parse(updatedContent);
-
-      expect(updatedState.first_installed_at).toBeDefined();
-      // Should be a valid ISO date
-      expect(new Date(updatedState.first_installed_at).toISOString()).toBe(
-        updatedState.first_installed_at,
-      );
-    });
-
-    it("should populate last_updated_at if missing from existing state", async () => {
-      const existingState = {
-        schema_version: 1,
-        client_id: "test-client-id",
-        opt_out: false,
-        first_installed_at: new Date().toISOString(),
-        // Missing last_updated_at
-        last_launched_at: new Date().toISOString(),
-        installed_version: "1.0.0",
-        install_source: "npm",
-      };
-
-      await fs.writeFile(installStatePath, JSON.stringify(existingState));
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      const updatedContent = await fs.readFile(installStatePath, "utf-8");
-      const updatedState = JSON.parse(updatedContent);
-
-      expect(updatedState.last_updated_at).toBeDefined();
-      // Should be a valid ISO date
-      expect(new Date(updatedState.last_updated_at).toISOString()).toBe(
-        updatedState.last_updated_at,
-      );
-    });
-
-    it("should update schema_version to current version", async () => {
-      const existingState = {
-        schema_version: 0, // Old schema version
-        client_id: "test-client-id",
-        opt_out: false,
-        first_installed_at: new Date().toISOString(),
-        last_updated_at: new Date().toISOString(),
-        last_launched_at: new Date().toISOString(),
-        installed_version: "1.0.0",
-        install_source: "npm",
-      };
-
-      await fs.writeFile(installStatePath, JSON.stringify(existingState));
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      const updatedContent = await fs.readFile(installStatePath, "utf-8");
-      const updatedState = JSON.parse(updatedContent);
-
-      expect(updatedState.schema_version).toBe(1);
-    });
-  });
-
-  describe("trackInstallLifecycle integration", () => {
-    it("should create new state file on first run", async () => {
-      // Ensure no state file exists
-      try {
-        await fs.unlink(installStatePath);
-      } catch {
-        // File doesn't exist
-      }
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      const exists = await fs
-        .access(installStatePath)
-        .then(() => true)
-        .catch(() => false);
-      expect(exists).toBe(true);
-
-      const content = await fs.readFile(installStatePath, "utf-8");
-      const state = JSON.parse(content);
-
-      expect(state.schema_version).toBe(1);
-      expect(state.client_id).toBeDefined();
-      expect(state.installed_version).toBe("1.0.0");
-    });
-
-    it("should send noriprof_install_detected event on first run", async () => {
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      const installCall = fetchMock.mock.calls.find((call) => {
-        const body = JSON.parse(call[1].body);
-        return body.event_name === "noriprof_install_detected";
-      });
-
-      expect(installCall).toBeDefined();
-    });
-
-    it("should send noriprof_install_detected event on version upgrade", async () => {
-      const existingState = {
-        schema_version: 1,
-        client_id: "test-client-id",
-        opt_out: false,
-        first_installed_at: new Date().toISOString(),
-        last_updated_at: new Date().toISOString(),
-        last_launched_at: new Date().toISOString(),
-        installed_version: "1.0.0",
-        install_source: "npm",
-      };
-
-      await fs.writeFile(installStatePath, JSON.stringify(existingState));
-
-      await trackInstallLifecycle({ currentVersion: "2.0.0" });
-
-      const updateCall = fetchMock.mock.calls.find((call) => {
-        const body = JSON.parse(call[1].body);
-        return body.event_name === "noriprof_install_detected";
-      });
-
-      expect(updateCall).toBeDefined();
-    });
-
-    it("should respect opt_out flag", async () => {
-      const existingState = {
-        schema_version: 1,
-        client_id: "test-client-id",
-        opt_out: true, // Opted out
-        first_installed_at: new Date().toISOString(),
-        last_updated_at: new Date().toISOString(),
-        last_launched_at: new Date().toISOString(),
-        installed_version: "1.0.0",
-        install_source: "npm",
-      };
-
-      await fs.writeFile(installStatePath, JSON.stringify(existingState));
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      // No analytics events should be sent
-      expect(fetchMock).not.toHaveBeenCalled();
-    });
-
-    it("should respect NORI_NO_ANALYTICS env var", async () => {
-      process.env.NORI_NO_ANALYTICS = "1";
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      // No analytics events should be sent
-      expect(fetchMock).not.toHaveBeenCalled();
-    });
-
-    it("should NOT downgrade installed_version on older version run", async () => {
-      const existingState = {
-        schema_version: 1,
-        client_id: "test-client-id",
-        opt_out: false,
-        first_installed_at: new Date().toISOString(),
-        last_updated_at: new Date().toISOString(),
-        last_launched_at: new Date().toISOString(),
-        installed_version: "2.0.0", // Higher version
-        install_source: "npm",
-      };
-
-      await fs.writeFile(installStatePath, JSON.stringify(existingState));
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" }); // Lower version
-
-      const updatedContent = await fs.readFile(installStatePath, "utf-8");
-      const updatedState = JSON.parse(updatedContent);
-
-      // Version should remain at 2.0.0, not downgrade to 1.0.0
-      expect(updatedState.installed_version).toBe("2.0.0");
-    });
-  });
-});
-
-/**
- * Tests for new API spec compliance (PLAN_ANALYTICS_PROXY.md)
- * These test the new exported functions and event structure
- */
-describe("Analytics API Spec Compliance (PLAN_ANALYTICS_PROXY.md)", () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    fetchMock = vi.fn().mockResolvedValue({ ok: true });
-    vi.stubGlobal("fetch", fetchMock);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
+    delete process.env.NORI_GLOBAL_CONFIG;
+    delete process.env.NORI_ANALYTICS_URL;
+    delete process.env.NORI_NO_ANALYTICS;
     vi.unstubAllGlobals();
-  });
-
-  describe("getDeterministicClientId", () => {
-    // @current-session
-    it("returns a deterministic UUID-formatted string based on machine identifiers", async () => {
-      // Import the function - it should be exported
-      const { getDeterministicClientId } = await import("./installTracking.js");
-
-      const clientId = getDeterministicClientId();
-
-      // Should be a valid UUID format (8-4-4-4-12 hex characters)
-      expect(clientId).toMatch(
-        /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/,
-      );
-
-      // Should be deterministic - same machine = same ID
-      const clientId2 = getDeterministicClientId();
-      expect(clientId2).toBe(clientId);
-    });
-
-    // @current-session
-    it("is NOT a static string like 'plugin-installer'", async () => {
-      const { getDeterministicClientId } = await import("./installTracking.js");
-
-      const clientId = getDeterministicClientId();
-      expect(clientId).not.toBe("plugin-installer");
-      expect(clientId).not.toBe("nori-skillsets");
-    });
-  });
-
-  describe("buildBaseEventParams", () => {
-    // @current-session
-    it("includes all required tilework_* fields", async () => {
-      const { buildBaseEventParams } = await import("./installTracking.js");
-
-      const params = buildBaseEventParams();
-
-      // tilework_source is configurable, just verify it's present
-      expect(params).toHaveProperty("tilework_source");
-      expect(params).toHaveProperty("tilework_session_id");
-      expect(params).toHaveProperty("tilework_timestamp");
-    });
-
-    // @current-session
-    it("tilework_session_id is constant across multiple calls in the same process", async () => {
-      const { buildBaseEventParams } = await import("./installTracking.js");
-
-      const params1 = buildBaseEventParams();
-      const params2 = buildBaseEventParams();
-
-      expect(params1.tilework_session_id).toBe(params2.tilework_session_id);
-    });
-
-    // @current-session
-    it("tilework_timestamp is ISO 8601 format", async () => {
-      const { buildBaseEventParams } = await import("./installTracking.js");
-
-      const params = buildBaseEventParams();
-
-      // Should be a valid ISO 8601 timestamp
-      expect(new Date(params.tilework_timestamp).toISOString()).toBe(
-        params.tilework_timestamp,
-      );
-    });
-  });
-
-  describe("sendAnalyticsEvent", () => {
-    // @current-session
-    it("sends event with correct structure matching API spec", async () => {
-      const { sendAnalyticsEvent, buildBaseEventParams } =
-        await import("./installTracking.js");
-
-      sendAnalyticsEvent({
-        eventName: "test_event",
-        eventParams: buildBaseEventParams(),
-      });
-
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-      const [url, options] = fetchMock.mock.calls[0];
-
-      expect(url).toBe("https://noriskillsets.dev/api/analytics/track");
-
-      const payload = JSON.parse(options.body);
-      expect(payload).toHaveProperty("client_id");
-      expect(payload).toHaveProperty("event_name", "test_event");
-      expect(payload).toHaveProperty("event_params");
-      // tilework_source is configurable, just verify it's present
-      expect(payload.event_params).toHaveProperty("tilework_source");
-      expect(payload.event_params).toHaveProperty("tilework_session_id");
-      expect(payload.event_params).toHaveProperty("tilework_timestamp");
-    });
-
-    // @current-session
-    it("includes user_id when provided", async () => {
-      const { sendAnalyticsEvent, buildBaseEventParams } =
-        await import("./installTracking.js");
-
-      sendAnalyticsEvent({
-        eventName: "test_event",
-        eventParams: buildBaseEventParams(),
-        userId: "test@example.com",
-      });
-
-      const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
-      expect(payload).toHaveProperty("user_id", "test@example.com");
-    });
-
-    // @current-session
-    it("omits user_id when not provided", async () => {
-      const { sendAnalyticsEvent, buildBaseEventParams } =
-        await import("./installTracking.js");
-
-      sendAnalyticsEvent({
-        eventName: "test_event",
-        eventParams: buildBaseEventParams(),
-      });
-
-      const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
-      expect(payload).not.toHaveProperty("user_id");
-    });
-
-    // @current-session
-    it("uses snake_case field names (not camelCase)", async () => {
-      const { sendAnalyticsEvent, buildBaseEventParams } =
-        await import("./installTracking.js");
-
-      sendAnalyticsEvent({
-        eventName: "test_event",
-        eventParams: buildBaseEventParams(),
-        clientId: "test-client-id",
-      });
-
-      const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
-
-      // Should have snake_case
-      expect(payload).toHaveProperty("client_id");
-      expect(payload).toHaveProperty("event_name");
-      expect(payload).toHaveProperty("event_params");
-
-      // Should NOT have camelCase
-      expect(payload).not.toHaveProperty("clientId");
-      expect(payload).not.toHaveProperty("eventName");
-      expect(payload).not.toHaveProperty("eventParams");
-    });
-
-    // @current-session
-    it("uses deterministic client_id when none provided", async () => {
-      const { sendAnalyticsEvent, buildBaseEventParams } =
-        await import("./installTracking.js");
-
-      sendAnalyticsEvent({
-        eventName: "test_event",
-        eventParams: buildBaseEventParams(),
-      });
-
-      const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
-      expect(payload.client_id).toMatch(
-        /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/,
-      );
-      expect(payload.client_id).not.toBe("plugin-installer");
-    });
-  });
-
-  describe("trackInstallLifecycle - New Event Names", () => {
-    let installStatePath: string;
-    let tempProfilesDir: string;
-
-    beforeEach(async () => {
-      installStatePath = path.join(
-        os.homedir(),
-        ".nori",
-        "profiles",
-        ".nori-install.json",
-      );
-      tempProfilesDir = path.dirname(installStatePath);
-
-      await fs.mkdir(tempProfilesDir, { recursive: true });
-
-      try {
-        await fs.unlink(installStatePath);
-      } catch {
-        // File doesn't exist
-      }
-    });
-
-    afterEach(async () => {
-      try {
-        await fs.unlink(installStatePath);
-      } catch {
-        // File doesn't exist
-      }
-    });
-
-    // @current-session
-    it("sends noriprof_install_detected on first install", async () => {
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      const installCall = fetchMock.mock.calls.find((call) => {
-        const body = JSON.parse(call[1].body);
-        return body.event_name === "noriprof_install_detected";
-      });
-
-      expect(installCall).toBeDefined();
-    });
-
-    // @current-session
-    it("sends noriprof_install_detected with tilework_cli_previous_version on upgrade", async () => {
-      const existingState = {
-        schema_version: 1,
-        client_id: "test-client-id",
-        opt_out: false,
-        first_installed_at: new Date().toISOString(),
-        last_updated_at: new Date().toISOString(),
-        last_launched_at: new Date().toISOString(),
-        installed_version: "1.0.0",
-        install_source: "npm",
-      };
-
-      await fs.writeFile(installStatePath, JSON.stringify(existingState));
-
-      await trackInstallLifecycle({ currentVersion: "2.0.0" });
-
-      const installCall = fetchMock.mock.calls.find((call) => {
-        const body = JSON.parse(call[1].body);
-        return body.event_name === "noriprof_install_detected";
-      });
-
-      expect(installCall).toBeDefined();
-      const payload = JSON.parse(installCall![1].body);
-      expect(payload.event_params).toHaveProperty(
-        "tilework_cli_is_first_install",
-        false,
-      );
-      expect(payload.event_params).toHaveProperty(
-        "tilework_cli_previous_version",
-        "1.0.0",
-      );
-    });
-
-    // @current-session
-    it("sends noriprof_user_resurrected after 30+ days of inactivity", async () => {
-      const thirtyOneDaysAgo = new Date(
-        Date.now() - 31 * 24 * 60 * 60 * 1000,
-      ).toISOString();
-
-      await fs.writeFile(
-        installStatePath,
-        JSON.stringify({
-          schema_version: 1,
-          client_id: "test-client-id",
-          opt_out: false,
-          first_installed_at: thirtyOneDaysAgo,
-          last_updated_at: thirtyOneDaysAgo,
-          last_launched_at: thirtyOneDaysAgo,
-          installed_version: "1.0.0",
-          install_source: "npm",
-        }),
-      );
-
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      const resurrectedCall = fetchMock.mock.calls.find((call) => {
-        const body = JSON.parse(call[1].body);
-        return body.event_name === "noriprof_user_resurrected";
-      });
-
-      expect(resurrectedCall).toBeDefined();
-    });
-  });
-
-  describe("trackInstallLifecycle - CLI Event Params", () => {
-    let installStatePath: string;
-    let tempProfilesDir: string;
-
-    beforeEach(async () => {
-      installStatePath = path.join(
-        os.homedir(),
-        ".nori",
-        "profiles",
-        ".nori-install.json",
-      );
-      tempProfilesDir = path.dirname(installStatePath);
-
-      await fs.mkdir(tempProfilesDir, { recursive: true });
-
-      try {
-        await fs.unlink(installStatePath);
-      } catch {
-        // File doesn't exist
-      }
-    });
-
-    afterEach(async () => {
-      try {
-        await fs.unlink(installStatePath);
-      } catch {
-        // File doesn't exist
-      }
-    });
-
-    // @current-session
-    it("includes all required tilework_cli_* fields in event_params", async () => {
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      const installCall = fetchMock.mock.calls.find((call) => {
-        const body = JSON.parse(call[1].body);
-        return body.event_name === "noriprof_install_detected";
-      });
-
-      expect(installCall).toBeDefined();
-      const payload = JSON.parse(installCall![1].body);
-      const params = payload.event_params;
-
-      // Required base fields - tilework_source is configurable
-      expect(params).toHaveProperty("tilework_source");
-      expect(params).toHaveProperty("tilework_session_id");
-      expect(params).toHaveProperty("tilework_timestamp");
-
-      // Required CLI fields
-      expect(params).toHaveProperty(
-        "tilework_cli_executable_name",
-        "nori-skillsets",
-      );
-      expect(params).toHaveProperty("tilework_cli_installed_version", "1.0.0");
-      expect(params).toHaveProperty("tilework_cli_install_source");
-      expect(params).toHaveProperty("tilework_cli_days_since_install");
-      expect(params).toHaveProperty("tilework_cli_node_version");
-    });
-
-    // @current-session
-    it("includes tilework_cli_is_first_install=true on first install", async () => {
-      await trackInstallLifecycle({ currentVersion: "1.0.0" });
-
-      const installCall = fetchMock.mock.calls.find((call) => {
-        const body = JSON.parse(call[1].body);
-        return body.event_name === "noriprof_install_detected";
-      });
-
-      expect(installCall).toBeDefined();
-      const params = JSON.parse(installCall![1].body).event_params;
-
-      expect(params.tilework_cli_is_first_install).toBe(true);
-    });
-  });
-});
-
-/**
- * Tests for buildCLIEventParams helper function
- * This function builds all standard tilework_cli_* params for analytics events
- */
-describe("buildCLIEventParams", () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    fetchMock = vi.fn().mockResolvedValue({ ok: true });
-    vi.stubGlobal("fetch", fetchMock);
-  });
-
-  afterEach(() => {
     vi.restoreAllMocks();
-    vi.unstubAllGlobals();
+    await fs.rm(testHome, { recursive: true, force: true });
   });
 
-  // @current-session
-  it("includes all required tilework_cli_* fields", async () => {
-    const { buildCLIEventParams } = await import("./installTracking.js");
+  it("uses a direct unexpired Firebase ID token and the exact v1 envelope", async () => {
+    await writeConfig({
+      idToken: "firebase-id-token",
+      idTokenExpiresAt: Date.now() + 60_000,
+      apiToken: `nori_acme_${"a".repeat(64)}`,
+    });
+    await writeInstallState();
 
-    const params = await buildCLIEventParams();
+    await trackCommandCompleted({
+      command: "install",
+      result: "success",
+      currentVersion: "2.4.0",
+    });
+    await flushProductAnalytics({ timeoutMs: 100 });
 
-    // Base params from buildBaseEventParams - tilework_source is configurable
-    expect(params).toHaveProperty("tilework_source");
-    expect(params).toHaveProperty("tilework_session_id");
-    expect(params).toHaveProperty("tilework_timestamp");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(ANALYTICS_URL);
+    expect(init.headers).toEqual({
+      Authorization: "Bearer firebase-id-token",
+      "Content-Type": "application/json",
+    });
 
-    // CLI-specific params
-    expect(params).toHaveProperty(
-      "tilework_cli_executable_name",
-      "nori-skillsets",
+    const body = JSON.parse(String(init.body)) as AnalyticsRequest;
+    expect(body).toEqual({
+      schema_version: 1,
+      event: "skillsets_command_completed",
+      activity_id: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      ),
+      occurred_at: expect.stringMatching(/Z$/),
+      product: "skillsets",
+      surface: "cli",
+      app_version: "2.4.0",
+      properties: { command: "install", result: "success" },
+    });
+  });
+
+  it("exchanges a refresh token and never sends an API token", async () => {
+    await writeConfig({
+      refreshToken: "firebase-refresh-token",
+      apiToken: `nori_acme_${"b".repeat(64)}`,
+    });
+    await writeInstallState();
+
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.startsWith(FIREBASE_TOKEN_URL_PREFIX)) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id_token: "refreshed-firebase-token",
+            refresh_token: "rotated-refresh-token",
+            expires_in: "3600",
+            token_type: "Bearer",
+            user_id: "firebase-user",
+            project_id: "tilework-e18c5",
+          }),
+        };
+      }
+      return { ok: true, status: 202, json: async () => ({ accepted: true }) };
+    });
+
+    await trackCommandCompleted({
+      command: "current",
+      result: "success",
+      currentVersion: "2.4.0",
+    });
+    await flushProductAnalytics({ timeoutMs: 100 });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toEqual(
+      expect.stringMatching(
+        /^https:\/\/securetoken\.googleapis\.com\/v1\/token/,
+      ),
     );
-    expect(params).toHaveProperty("tilework_cli_installed_version");
-    expect(params).toHaveProperty("tilework_cli_install_source");
-    expect(typeof params.tilework_cli_days_since_install).toBe("number");
-    expect(params).toHaveProperty(
-      "tilework_cli_node_version",
-      process.versions.node,
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).signal).toBeInstanceOf(
+      AbortSignal,
     );
-    expect(params).toHaveProperty("tilework_cli_install_type");
+    const analyticsCall = analyticsCalls(fetchMock)[0] as [string, RequestInit];
+    expect(analyticsCall[1].headers).toEqual(
+      expect.objectContaining({
+        Authorization: "Bearer refreshed-firebase-token",
+      }),
+    );
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toContain(
+      `nori_acme_${"b".repeat(64)}`,
+    );
   });
 
-  // @current-session
-  it("returns 'unauthenticated' install_type when no auth in config", async () => {
-    const { buildCLIEventParams } = await import("./installTracking.js");
+  it.each([
+    [
+      "API-token-only configuration",
+      { apiToken: `nori_acme_${"c".repeat(64)}` },
+    ],
+    [
+      "broker service identity",
+      {
+        username: "nori-service:session-123",
+        idToken: "service-token",
+        idTokenExpiresAt: Date.now() + 60_000,
+      },
+    ],
+    ["anonymous configuration", {}],
+  ])("skips %s", async (_caseName, auth) => {
+    await writeConfig(auth);
+    await writeInstallState();
 
-    // Pass a mock config with no auth
-    const params = await buildCLIEventParams({
-      config: { activeSkillset: null } as any,
+    await trackCommandCompleted({
+      command: "current",
+      result: "success",
+      currentVersion: "2.4.0",
     });
+    await flushProductAnalytics({ timeoutMs: 100 });
 
-    expect(params.tilework_cli_install_type).toBe("unauthenticated");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  // @current-session
-  it("returns 'authenticated' install_type when auth exists in config", async () => {
-    const { buildCLIEventParams } = await import("./installTracking.js");
-
-    const params = await buildCLIEventParams({
-      config: {
-        auth: { username: "test@example.com" },
-        activeSkillset: null,
-      } as any,
-    });
-
-    expect(params.tilework_cli_install_type).toBe("authenticated");
-  });
-
-  // @current-session
-  it("extracts profile from agent config", async () => {
-    const { buildCLIEventParams } = await import("./installTracking.js");
-
-    const params = await buildCLIEventParams({
-      config: {
-        activeSkillset: "senior-swe",
-      } as any,
-    });
-
-    expect(params.tilework_cli_profile).toBe("senior-swe");
-  });
-
-  // @current-session
-  it("returns null profile when not configured", async () => {
-    const { buildCLIEventParams } = await import("./installTracking.js");
-
-    const params = await buildCLIEventParams({
-      config: { activeSkillset: null } as any,
-    });
-
-    expect(params.tilework_cli_profile).toBeNull();
-  });
-
-  // @current-session
-  it("uses provided currentVersion instead of reading from package", async () => {
-    const { buildCLIEventParams } = await import("./installTracking.js");
-
-    const params = await buildCLIEventParams({
-      currentVersion: "99.99.99",
-      config: { activeSkillset: null } as any,
-    });
-
-    expect(params.tilework_cli_installed_version).toBe("99.99.99");
-  });
-
-  // @current-session
-  it("calculates days_since_install from install state", async () => {
-    const { buildCLIEventParams, readInstallState } =
-      await import("./installTracking.js");
-
-    // First ensure there's an install state with a known date
-    const state = await readInstallState();
-    if (state != null) {
-      // days_since_install should be calculated from first_installed_at
-      const params = await buildCLIEventParams({
-        config: { activeSkillset: null } as any,
+  it.each(["environment", "durable state"])(
+    "honors the %s analytics opt-out",
+    async (optOut) => {
+      await writeConfig({
+        idToken: "firebase-id-token",
+        idTokenExpiresAt: Date.now() + 60_000,
       });
+      await writeInstallState({ opt_out: optOut === "durable state" });
+      if (optOut === "environment") {
+        process.env.NORI_NO_ANALYTICS = "1";
+      }
 
-      expect(typeof params.tilework_cli_days_since_install).toBe("number");
-      expect(params.tilework_cli_days_since_install).toBeGreaterThanOrEqual(0);
-    }
-  });
-});
-
-/**
- * Tests for getUserId helper function
- * This function extracts user email from config for cross-device tracking
- */
-describe("getUserId", () => {
-  // @current-session
-  it("returns email from config auth when present", async () => {
-    const { getUserId } = await import("./installTracking.js");
-
-    const userId = await getUserId({
-      config: {
-        auth: { username: "test@example.com" },
-      } as any,
-    });
-
-    expect(userId).toBe("test@example.com");
-  });
-
-  // @current-session
-  it("returns null when no auth in config", async () => {
-    const { getUserId } = await import("./installTracking.js");
-
-    const userId = await getUserId({
-      config: { activeSkillset: null } as any,
-    });
-
-    expect(userId).toBeNull();
-  });
-
-  // @current-session
-  it("returns null when config is null", async () => {
-    const { getUserId } = await import("./installTracking.js");
-
-    const userId = await getUserId({ config: null });
-
-    expect(userId).toBeNull();
-  });
-});
-
-/**
- * Tests for readInstallState export
- * This function should be exported for use by other modules
- */
-describe("readInstallState export", () => {
-  // @current-session
-  it("is exported and can be called", async () => {
-    const { readInstallState } = await import("./installTracking.js");
-
-    expect(typeof readInstallState).toBe("function");
-
-    // Should return null or an InstallState object
-    const state = await readInstallState();
-    if (state != null) {
-      expect(state).toHaveProperty("schema_version");
-      expect(state).toHaveProperty("client_id");
-    }
-  });
-});
-
-/**
- * Tests for CLIEventParams type export
- * The type should be exported for use by callers
- */
-describe("Type exports", () => {
-  // @current-session
-  it("exports EventParams and CLIEventParams types", async () => {
-    // This test verifies the types are exported by checking
-    // that buildCLIEventParams returns the expected shape
-    const { buildCLIEventParams } = await import("./installTracking.js");
-
-    const params = await buildCLIEventParams({
-      config: { activeSkillset: null } as any,
-    });
-
-    // Verify it matches CLIEventParams structure
-    // Base EventParams fields
-    expect(params.tilework_source).toBeDefined();
-    expect(params.tilework_session_id).toBeDefined();
-    expect(params.tilework_timestamp).toBeDefined();
-
-    // CLIEventParams additional fields
-    expect(params.tilework_cli_executable_name).toBeDefined();
-    expect(params.tilework_cli_installed_version).toBeDefined();
-    expect(params.tilework_cli_install_source).toBeDefined();
-    expect(params.tilework_cli_days_since_install).toBeDefined();
-    expect(params.tilework_cli_node_version).toBeDefined();
-    expect(params.tilework_cli_install_type).toBeDefined();
-  });
-});
-
-/**
- * Tests for dynamic tilework_source configuration
- * These functions allow entry points to configure the analytics source identifier
- */
-describe("tilework_source configuration", () => {
-  afterEach(() => {
-    // Reset to default after each test
-    setTileworkSource({ source: "nori-skillsets" });
-  });
-
-  describe("getTileworkSource", () => {
-    it("returns the default value 'nori-skillsets' when not explicitly set", () => {
-      const source = getTileworkSource();
-      expect(source).toBe("nori-skillsets");
-    });
-  });
-
-  describe("setTileworkSource", () => {
-    it("changes the value returned by getTileworkSource", () => {
-      setTileworkSource({ source: "nori-skillsets" });
-
-      const source = getTileworkSource();
-      expect(source).toBe("nori-skillsets");
-    });
-  });
-
-  describe("buildBaseEventParams uses configured source", () => {
-    let fetchMock: ReturnType<typeof vi.fn>;
-
-    beforeEach(() => {
-      fetchMock = vi.fn().mockResolvedValue({ ok: true });
-      vi.stubGlobal("fetch", fetchMock);
-    });
-
-    afterEach(() => {
-      vi.restoreAllMocks();
-      vi.unstubAllGlobals();
-      setTileworkSource({ source: "nori-skillsets" });
-    });
-
-    it("includes tilework_source from getTileworkSource when set to nori-skillsets", async () => {
-      const { buildBaseEventParams, setTileworkSource: setSrc } =
-        await import("./installTracking.js");
-
-      setSrc({ source: "nori-skillsets" });
-      const params = buildBaseEventParams();
-
-      expect(params.tilework_source).toBe("nori-skillsets");
-    });
-  });
-
-  describe("sendAnalyticsEvent uses configured source", () => {
-    let fetchMock: ReturnType<typeof vi.fn>;
-
-    beforeEach(() => {
-      fetchMock = vi.fn().mockResolvedValue({ ok: true });
-      vi.stubGlobal("fetch", fetchMock);
-    });
-
-    afterEach(() => {
-      vi.restoreAllMocks();
-      vi.unstubAllGlobals();
-      setTileworkSource({ source: "nori-skillsets" });
-    });
-
-    it("sends events with the configured tilework_source", async () => {
-      const {
-        sendAnalyticsEvent,
-        buildBaseEventParams,
-        setTileworkSource: setSrc,
-      } = await import("./installTracking.js");
-
-      setSrc({ source: "nori-skillsets" });
-
-      sendAnalyticsEvent({
-        eventName: "test_event",
-        eventParams: buildBaseEventParams(),
+      await trackCommandCompleted({
+        command: "current",
+        result: "success",
+        currentVersion: "2.4.0",
       });
+      await flushProductAnalytics({ timeoutMs: 100 });
 
-      const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
-      expect(payload.event_params.tilework_source).toBe("nori-skillsets");
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    [null, "1.0.0", "first_install"],
+    ["1.0.0", "2.0.0", "update"],
+  ])(
+    "classifies lifecycle from %s to %s as %s",
+    async (previousVersion, currentVersion, installKind) => {
+      await writeConfig({
+        idToken: "firebase-id-token",
+        idTokenExpiresAt: Date.now() + 60_000,
+      });
+      if (previousVersion != null) {
+        await writeInstallState({ installed_version: previousVersion });
+      }
+
+      await trackInstallLifecycle({ currentVersion });
+      await flushProductAnalytics({ timeoutMs: 100 });
+
+      expect(analyticsBodies(fetchMock)).toEqual([
+        expect.objectContaining({
+          event: "skillsets_install_started",
+          properties: { install_kind: installKind },
+        }),
+        expect.objectContaining({
+          event: "skillsets_install_completed",
+          properties: { install_kind: installKind, result: "success" },
+        }),
+      ]);
+    },
+  );
+
+  it("classifies an explicit same-version installer run as reinstall", async () => {
+    await writeConfig({
+      idToken: "firebase-id-token",
+      idTokenExpiresAt: Date.now() + 60_000,
     });
+    await writeInstallState({ installed_version: "2.4.0" });
+
+    await trackInstallLifecycle({
+      currentVersion: "2.4.0",
+      explicitInstall: true,
+    });
+    await flushProductAnalytics({ timeoutMs: 100 });
+
+    expect(analyticsBodies(fetchMock)).toEqual([
+      expect.objectContaining({
+        event: "skillsets_install_started",
+        properties: { install_kind: "reinstall" },
+      }),
+      expect.objectContaining({
+        event: "skillsets_install_completed",
+        properties: { install_kind: "reinstall", result: "success" },
+      }),
+    ]);
   });
 
-  describe("buildCLIEventParams uses configured source for executable name", () => {
-    beforeEach(() => {
-      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+  it("does not emit lifecycle events on an ordinary launch of the same version", async () => {
+    await writeConfig({
+      idToken: "firebase-id-token",
+      idTokenExpiresAt: Date.now() + 60_000,
+    });
+    await writeInstallState({ installed_version: "2.4.0" });
+
+    await trackInstallLifecycle({ currentVersion: "2.4.0" });
+    await flushProductAnalytics({ timeoutMs: 100 });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not emit or move state backward on an ordinary lower-version launch", async () => {
+    await writeConfig({
+      idToken: "firebase-id-token",
+      idTokenExpiresAt: Date.now() + 60_000,
+    });
+    await writeInstallState({ installed_version: "2.4.0" });
+
+    await trackInstallLifecycle({ currentVersion: "2.3.0" });
+    await flushProductAnalytics({ timeoutMs: 100 });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      JSON.parse(await fs.readFile(getInstallStatePath(), "utf8"))
+        .installed_version,
+    ).toBe("2.4.0");
+  });
+
+  it("persists first-install state before capture and is silent on the next launch", async () => {
+    await writeConfig({
+      idToken: "firebase-id-token",
+      idTokenExpiresAt: Date.now() + 60_000,
     });
 
-    afterEach(() => {
-      vi.restoreAllMocks();
-      vi.unstubAllGlobals();
-      setTileworkSource({ source: "nori-skillsets" });
+    await trackInstallLifecycle({ currentVersion: "2.4.0" });
+    await flushProductAnalytics({ timeoutMs: 100 });
+    const state = JSON.parse(
+      await fs.readFile(getInstallStatePath(), "utf8"),
+    ) as Record<string, unknown>;
+    expect(state.installed_version).toBe("2.4.0");
+    expect(state.first_installed_at).toEqual(expect.any(String));
+    expect(analyticsCalls(fetchMock)).toHaveLength(2);
+
+    fetchMock.mockClear();
+    await trackInstallLifecycle({ currentVersion: "2.4.0" });
+    await flushProductAnalytics({ timeoutMs: 100 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "init",
+    "search",
+    "download",
+    "upload",
+    "install",
+    "switch",
+    "link",
+    "unlink",
+    "list",
+    "list-active",
+    "list-agents",
+    "current",
+    "download-skill",
+    "upload-skill",
+    "download-subagent",
+    "external",
+    "dir",
+    "install-location",
+    "fork",
+    "new",
+    "register",
+    "import-mcp",
+    "edit",
+    "clear",
+    "clear-current",
+    "factory-reset",
+    "config",
+  ])(
+    "emits only the canonical allowlisted command identifier %s",
+    async (command) => {
+      await writeConfig({
+        idToken: "firebase-id-token",
+        idTokenExpiresAt: Date.now() + 60_000,
+      });
+      await writeInstallState();
+
+      await trackCommandCompleted({
+        command,
+        result: "success",
+        currentVersion: "2.4.0",
+      });
+      await flushProductAnalytics({ timeoutMs: 100 });
+
+      expect(analyticsBodies(fetchMock)[0]).toEqual(
+        expect.objectContaining({
+          event: "skillsets_command_completed",
+          properties: { command, result: "success" },
+        }),
+      );
+    },
+  );
+
+  it.each([
+    "login",
+    "logout",
+    "syntax",
+    "help",
+    "version",
+    "completion",
+    "install --private",
+  ])("never sends excluded or raw command value %s", async (command) => {
+    await writeConfig({
+      idToken: "firebase-id-token",
+      idTokenExpiresAt: Date.now() + 60_000,
+    });
+    await writeInstallState();
+
+    await trackCommandCompleted({
+      command,
+      result: "success",
+      currentVersion: "2.4.0",
+    });
+    await flushProductAnalytics({ timeoutMs: 100 });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("sends the watch-started event without properties", async () => {
+    await writeConfig({
+      idToken: "firebase-id-token",
+      idTokenExpiresAt: Date.now() + 60_000,
+    });
+    await writeInstallState();
+
+    await trackWatchStarted({ currentVersion: "2.4.0" });
+    await flushProductAnalytics({ timeoutMs: 100 });
+
+    expect(analyticsBodies(fetchMock)).toEqual([
+      expect.objectContaining({ event: "skillsets_watch_started" }),
+    ]);
+    expect(analyticsBodies(fetchMock)[0]).not.toHaveProperty("properties");
+  });
+
+  it("bounds final flush and never changes output or exit state", async () => {
+    await writeConfig({
+      idToken: "firebase-id-token",
+      idTokenExpiresAt: Date.now() + 60_000,
+    });
+    await writeInstallState();
+    const stdout = vi.spyOn(process.stdout, "write");
+    const stderr = vi.spyOn(process.stderr, "write");
+    const originalExitCode = process.exitCode;
+    fetchMock.mockImplementation(() => new Promise(() => undefined));
+
+    await trackCommandCompleted({
+      command: "current",
+      result: "success",
+      currentVersion: "2.4.0",
+    });
+    const startedAt = Date.now();
+    await flushProductAnalytics({ timeoutMs: 25 });
+
+    expect(Date.now() - startedAt).toBeLessThan(250);
+    expect(stdout).not.toHaveBeenCalled();
+    expect(stderr).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(originalExitCode);
+  });
+
+  it("swallows HTTP failures after sending one stable activity envelope", async () => {
+    await writeConfig({
+      idToken: "firebase-id-token",
+      idTokenExpiresAt: Date.now() + 60_000,
+    });
+    await writeInstallState();
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({ error: "unavailable" }),
     });
 
-    it("includes tilework_cli_executable_name from getTileworkSource when set to nori-skillsets", async () => {
-      const { buildCLIEventParams, setTileworkSource: setSrc } =
-        await import("./installTracking.js");
-
-      setSrc({ source: "nori-skillsets" });
-      const params = await buildCLIEventParams();
-
-      expect(params.tilework_cli_executable_name).toBe("nori-skillsets");
-    });
+    await expect(
+      trackCommandCompleted({
+        command: "current",
+        result: "success",
+        currentVersion: "2.4.0",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      flushProductAnalytics({ timeoutMs: 100 }),
+    ).resolves.toBeUndefined();
+    expect(analyticsCalls(fetchMock)).toHaveLength(1);
+    expect(analyticsBodies(fetchMock)[0]?.activity_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f-]{27}$/i,
+    );
   });
 });
